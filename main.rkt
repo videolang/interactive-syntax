@@ -199,10 +199,21 @@
   (define-state y #f)
   (define-state width #f)
   (define-state height #f)
+  (define-public-state background-color "WhiteSmoke")
+  (define-public-state background-style 'solid)
   (define/public (add-data key val)
     (void))
   (define/public (draw dc x y w h)
-    (void))
+    (define old-pen (send dc get-pen))
+    (define old-brush (send dc get-brush))
+    (send dc set-pen
+          (new pen%
+               [style 'transparent]))
+    (send dc set-brush
+          background-color background-style)
+    (send dc draw-rectangle x y w h)
+    (send dc set-pen old-pen)
+    (send dc set-brush old-brush))
   (define/public (get-min-extent)
     (values 0 0))
   (define/public (on-mouse-event event)
@@ -287,8 +298,8 @@
     (error 'get-child-extent "IDMT does not have children")))
 
 (define-idmt list-widget$ widget$
-  (inherit/super get-min-extent)
-  (inherit/super set-current-extent)
+  (inherit/super get-min-extent
+                 set-current-extent)
   (super-new)
   (define-public-state idmt-list '())
   (define/public (add-idmt idmt)
@@ -322,6 +333,10 @@
     (super on-mouse-event event)
     (for/list ([i (in-list idmt-list)])
       (send i on-mouse-event event)))
+  (define/override (on-keyboard-event event)
+    (super on-keyboard-event event)
+    (for/list ([i (in-list idmt-list)])
+      (send i on-keyboard-event event)))
   (define/public (get-item-dim h)
     (if (empty? idmt-list) #f (/ h (length idmt-list))))
   (define/public (get-set-current-extent x-acc y-acc item-width item-height x y w h)
@@ -339,6 +354,7 @@
   (define/override (get-min-extent)
     (send this get-get-min-extent max +))
   (define/override (draw dc x y w h)
+    (super draw dc x y w h)
     (define item-height (send this get-item-dim h))
     (send this get-draw 0 item-height w item-height
           dc x y w h))
@@ -362,6 +378,7 @@
                 (max h height))))
     (values (+ b-w w) (+ b-h h)))
   (define/override (draw dc x y w h)
+    (super draw dc x y w h)
     (define item-width (if (empty? idmt-list) #f (/ w (length idmt-list))))
     (for/fold ([x x])
               ([i (in-list idmt-list)])
@@ -374,6 +391,7 @@
   (inherit-field horiz-margin
                  vert-margin)
   (define-public-state text "")
+  (set-field! background-style this 'transparent)
   (define/override (get-min-extent)
     (define the-font (send this get-font))
     (define-values (b-w b-h)
@@ -381,6 +399,7 @@
     (define pic (pict:text (or text "---") the-font))
     (values (+ b-w (pict-width pic)) (+ b-h (pict-height pic))))
   (define/override (draw dc x y w h)
+    (super draw dc x y w h)
     (define old-font (send dc get-font))
     (send dc set-font (send this get-font))
     (send dc draw-text (or text "---") (+ horiz-margin x) (+ vert-margin y))
@@ -399,9 +418,9 @@
   (init [(internal-label label) (new label$)])
   (define mouse-state 'up)
   (define-state label* internal-label)
-  (define-state up-color "WhiteSmoke")
-  (define-state hover-color "Gainsboro")
-  (define-state down-color "LightGray")
+  (define-state up-color "Gainsboro")
+  (define-state hover-color "LightGray")
+  (define-state down-color "Silver")
   (define/override (on-mouse-event event)
     (define-values (x y w h)
       (send this get-current-extent))
@@ -439,7 +458,11 @@
       (send label* get-min-extent))
     (values (+ b-w w) (+ b-h h)))
   (define/override (draw dc x y w h)
+    (super draw dc x y w h)
+    (define old-pen (send dc get-pen))
     (define old-brush (send dc get-brush))
+    (send dc set-pen
+          (new pen% [width 1]))
     (send dc set-brush
           (new brush% [color (make-object color%
                                (match mouse-state
@@ -452,6 +475,7 @@
     (send label* draw dc
           (+ x horiz-margin) (+ y vert-margin)
           (- w (* 2 horiz-margin)) (- h (* 2 vert-margin)))
+    (send dc set-pen old-pen)
     (send dc set-brush old-brush)))
 
 (define-idmt toggle$ widget$
@@ -460,14 +484,28 @@
 (define-idmt radio$ list-widget$
   (super-new))
 
-(define-idmt field$ widget$
+(define-idmt-mixin focus$
   (super-new)
-  (define-state content "")
+  (define-state focus? #f)
+  (define/public (has-focus?)
+    focus?)
+  (define/override (on-mouse-event event)
+    (super on-mouse-event event)))
+
+(define-idmt field$ (focus$ (text$ widget$))
+  (inherit-field text)
+  (super-new)
+  (set-field! background-style this 'solid)
+  (set-field! background-color this "white")
   (define-state caret 0)
   (define/override (on-keyboard-event event)
-    (define char (send event get-key-code))
-    (when (char? char)
-      (format "~a~a~a"
-              (substring content 0 caret)
-              char
-              (substring content caret)))))
+    (super on-keyboard-event event)
+    (when (send this has-focus?)
+      (define char (send event get-key-code))
+      (when (char? char)
+        (set! text
+              (format "~a~a~a"
+                      (substring text 0 caret)
+                      char
+                      (substring text caret)))
+        (set! caret (add1 caret))))))
