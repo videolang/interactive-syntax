@@ -9,7 +9,7 @@
 (define f (new frame% [label "IDMT"]))
 (define idmt (new vertical-block$))
 (define counter 0)
-(define-idmt add-item$ (receiver$ base$)
+(define-idmt add-item$ (receiver$$ base$)
   (super-new)
   (define/override (on-receive event)
     (send idmt add-idmt (new label$ [text (format "Item: ~a" counter)]))

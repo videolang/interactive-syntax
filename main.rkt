@@ -14,6 +14,7 @@
          racket/stxparam
          racket/splicing
          racket/match
+         racket/string
          (for-syntax racket/base
                      racket/syntax
                      syntax/parse))
@@ -199,7 +200,7 @@
   (define-state y #f)
   (define-state width #f)
   (define-state height #f)
-  (define-public-state background-color "WhiteSmoke")
+  (define-public-state background-color "Gainsboro")
   (define-public-state background-style 'solid)
   (define/public (add-data key val)
     (void))
@@ -230,14 +231,14 @@
   (define/public (get-current-extent)
     (values x y width height)))
 
-(define-idmt-mixin receiver$
+(define-idmt-mixin receiver$$
   (super-new)
   (define/public (on-receive event)
     (void))
   (define/public (signal event)
     (on-receive event)))
 
-(define-idmt-mixin signaler$
+(define-idmt-mixin signaler$$
   (super-new)
   (define-public-state receivers (mutable-set))
   (define/public (signal event)
@@ -386,7 +387,7 @@
       (values (+ x item-width)))
     (void)))
 
-(define-idmt-mixin text$
+(define-idmt-mixin text$$
   (super-new)
   (inherit-field horiz-margin
                  vert-margin)
@@ -396,31 +397,31 @@
     (define the-font (send this get-font))
     (define-values (b-w b-h)
       (super get-min-extent))
-    (define pic (pict:text (or text "---") the-font))
+    (define pic (pict:text text the-font))
     (values (+ b-w (pict-width pic)) (+ b-h (pict-height pic))))
   (define/override (draw dc x y w h)
     (super draw dc x y w h)
     (define old-font (send dc get-font))
     (send dc set-font (send this get-font))
-    (send dc draw-text (or text "---") (+ horiz-margin x) (+ vert-margin y))
+    (send dc draw-text text (+ horiz-margin x) (+ vert-margin y))
     (send dc set-font old-font)))
 
-(define-idmt label$ (text$ widget$)
+(define-idmt label$ (text$$ widget$)
   (inherit-field text)
   (super-new)
   (init [(internal-text text) #f])
   (set! text internal-text))
 
-(define-idmt button$ (signaler$ widget$)
+(define-idmt button$ (signaler$$ widget$)
   (super-new)
   (inherit-field horiz-margin
                  vert-margin)
   (init [(internal-label label) (new label$)])
   (define mouse-state 'up)
   (define-state label* internal-label)
-  (define-state up-color "Gainsboro")
-  (define-state hover-color "LightGray")
-  (define-state down-color "Silver")
+  (define-state up-color "Silver")
+  (define-state hover-color "DarkGray")
+  (define-state down-color "DimGray")
   (define/override (on-mouse-event event)
     (define-values (x y w h)
       (send this get-current-extent))
@@ -484,15 +485,45 @@
 (define-idmt radio$ list-widget$
   (super-new))
 
-(define-idmt-mixin focus$
+(define-idmt-mixin focus$$
   (super-new)
   (define-state focus? #f)
+  (define mouse-state 'up)
   (define/public (has-focus?)
     focus?)
   (define/override (on-mouse-event event)
-    (super on-mouse-event event)))
+    (define-values (x y w h)
+      (send this get-current-extent))
+    (define x-max (+ x w))
+    (define y-max (+ y h))
+    (define mouse-x (send event get-x))
+    (define mouse-y (send event get-y))
+    (define in-button?
+      (and (<= x mouse-x x-max)
+           (<= y mouse-y y-max)))
+    (match (send event get-event-type)
+      ['left-down
+       (if (and in-button? (eq? mouse-state 'hover))
+           (set! focus? #t)
+           (set! focus? #f))]
+      ['left-up
+       (when (and in-button? (eq? mouse-state 'down))
+         (if in-button?
+             (set! mouse-state 'hover)
+             (set! mouse-state 'up))
+         (send this signal this))]
+      ['motion
+       (match mouse-state
+         [(or 'up 'hover)
+          (if in-button?
+           (set! mouse-state 'hover)
+           (set! mouse-state 'up))]
+         ['down
+          (unless in-button?
+            (set! mouse-state 'up))])]
+      [_ (void)])))
 
-(define-idmt field$ (focus$ (text$ widget$))
+(define-idmt field$ (focus$$ (text$$ widget$))
   (inherit-field text)
   (super-new)
   (set-field! background-style this 'solid)
@@ -502,10 +533,32 @@
     (super on-keyboard-event event)
     (when (send this has-focus?)
       (define char (send event get-key-code))
-      (when (char? char)
-        (set! text
-              (format "~a~a~a"
-                      (substring text 0 caret)
-                      char
-                      (substring text caret)))
-        (set! caret (add1 caret))))))
+      (println char)
+      (match char
+        ['left
+         (set! caret (max 0 (sub1 caret)))]
+        ['right
+         (set! caret (min (string-length text) (add1 caret)))]
+        [(or #\newline #\return)
+         (void)]
+        [#\backspace
+         (set! text
+               (format "~a~a"
+                       (substring text 0 (max 0 (sub1 caret)))
+                       (substring text caret)))
+         (set! caret (max 0 (sub1 caret)))]
+        [#\rubout
+         (error "TODO")
+         #;(set! text
+                 (format "~a~a"
+                         (substring text 0 caret)
+                         (substring text (min (length text) (add1 caret)))))
+         #;(set! caret (min (sub1 (length text)) caret))]
+        [(? char?)
+         (set! text
+               (format "~a~a~a"
+                       (substring text 0 caret)
+                       char
+                       (substring text caret)))
+         (set! caret (add1 caret))]
+        [_ (void)]))))
