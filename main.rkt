@@ -392,6 +392,7 @@
   (inherit-field horiz-margin
                  vert-margin)
   (define-public-state text "")
+  (define-public-state scale? #f)
   (set-field! background-style this 'transparent)
   (define/override (get-min-extent)
     (define the-font (send this get-font))
@@ -529,11 +530,20 @@
   (set-field! background-style this 'solid)
   (set-field! background-color this "white")
   (define-state caret 0)
+  (define/override (draw dc x y w h)
+    (super draw dc x y w h)
+    (when (send this has-focus?)
+      (define pre-str (substring text 0 caret))
+      (define the-font (send this get-font))
+      (define pic (pict:text pre-str the-font))
+      (define old-pen (send dc get-pen))
+      (send dc set-pen "black" 1 'solid)
+      (send dc draw-line (+ x (pict-width pic)) y (+ x (pict-width pic)) (+ y h))
+      (send dc set-pen old-pen)))
   (define/override (on-keyboard-event event)
     (super on-keyboard-event event)
     (when (send this has-focus?)
       (define char (send event get-key-code))
-      (println char)
       (match char
         ['left
          (set! caret (max 0 (sub1 caret)))]
