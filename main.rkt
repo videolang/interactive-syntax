@@ -204,6 +204,8 @@
   (define-public-state background-style 'solid)
   (define/public (add-data key val)
     (void))
+  (define/public (copy)
+    (deserialize (serialize this)))
   (define/public (draw dc x y w h)
     (define old-pen (send dc get-pen))
     (define old-brush (send dc get-brush))
@@ -268,6 +270,21 @@
     (define/override (on-char event)
       (send idmt on-keyboard-event event)
       (send this refresh))))
+
+(define idmt-snip%
+  (class snip%
+    (init-field idmt)
+    (super-new)
+    (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
+      (define-values (w* h*)
+        (send idmt get-min-extent))
+      (when w (set-box! w w*))
+      (when h (set-box! h h*)))
+    (define/override (draw dc x y left top right bottom dx dy draw-caret)
+      (send idmt draw dc x y (- right left) (- bottom top)))
+    (define/override (copy)
+      (new idmt-snip%
+           [idmt (send idmt copy)]))))
 
 (define-idmt widget$ base$
   (super-new)

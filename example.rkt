@@ -7,7 +7,6 @@
 
 (require "main.rkt")
 
-(define f (new frame% [label "IDMT"]))
 (define idmt (new vertical-block$))
 (define counter 0)
 (define-idmt add-item$ (receiver$$ base$)
@@ -32,9 +31,12 @@
 (send btn2 register-receiver save)
 (send save register-parent idmt)
 (send idmt add-idmt btn2)
-(new idmt-canvas%
-     [parent f]
+;(define f (new frame% [label "IDMT"]))
+;(new idmt-canvas%
+;     [parent f]
+;     [idmt idmt])
+;(send f show #t)
+;(serialize idmt)
+;(deserialize (serialize idmt))
+(new idmt-snip%
      [idmt idmt])
-(send f show #t)
-(serialize idmt)
-(deserialize (serialize idmt))
