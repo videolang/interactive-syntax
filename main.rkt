@@ -273,15 +273,21 @@
 
 (define idmt-snip%
   (class snip%
+    (inherit get-flags set-flags)
     (init-field idmt)
     (super-new)
+    (set-flags (cons 'handles-events (get-flags)))
+    (define (get-size)
+      (send idmt get-min-extent))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
-      (define-values (w* h*)
-        (send idmt get-min-extent))
+      (define-values (w* h*) (get-size))
       (when w (set-box! w w*))
       (when h (set-box! h h*)))
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
-      (send idmt draw dc x y (- right left) (- bottom top)))
+      (define-values (w h) (get-size))
+      (send idmt draw dc x y w h))
+    (define/override (on-event dc x y ex ey event)
+      (send idmt on-mouse-event event))
     (define/override (copy)
       (new idmt-snip%
            [idmt (send idmt copy)]))))
