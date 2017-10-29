@@ -300,7 +300,8 @@
 (define-idmt widget$ base$
   (super-new)
   ;(init-field [font normal-control-font])
-  (init [(internal-font font) normal-control-font])
+  (init [(internal-font font) normal-control-font]
+        [(internal-parent parent) #f])
   (define-state font '())
   (define/public (get-font)
     (apply make-object font% font))
@@ -318,7 +319,7 @@
   (define-public-state vert-margin 2)
   (define-public-state horiz-margin 2)
   (define-public-state style '())
-  (define-public-state parent #f)
+  (define-public-state parent internal-parent)
   (define/override (get-min-extent)
     (values (* 2 vert-margin) (* 2 horiz-margin)))
   (define/public (register-parent other)
