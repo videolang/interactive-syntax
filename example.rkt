@@ -31,12 +31,12 @@
 (send btn2 register-receiver save)
 (send save register-parent idmt)
 (send idmt add-idmt btn2)
-;(define f (new frame% [label "IDMT"]))
-;(new idmt-canvas%
-;     [parent f]
-;     [idmt idmt])
-;(send f show #t)
+(define f (new frame% [label "IDMT"]))
+(new idmt-canvas%
+     [parent f]
+     [idmt idmt])
+(send f show #t)
 ;(serialize idmt)
 ;(deserialize (serialize idmt))
-(new idmt-snip%
-     [idmt idmt])
+;(new idmt-snip%
+;     [idmt idmt])

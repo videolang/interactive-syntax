@@ -2,8 +2,6 @@
 
 (provide (all-defined-out))
 (require file/convertible
-         pict
-         (prefix-in pict: pict)
          racket/set
          racket/list
          racket/math
@@ -194,12 +192,19 @@
    on-mouse-event
    on-keyboard-event))
 
+(define text-size-dc
+  (new bitmap-dc% [bitmap (make-object bitmap% 1 1)]))
+
 (define-base-idmt* base$ object% (idmt<$>)
   (super-new)
   (define-state x #f)
   (define-state y #f)
   (define-state width #f)
   (define-state height #f)
+  (define-state margin-top #f)
+  (define-state margin-bottom #f)
+  (define-state margin-left #f)
+  (define-state margin-right #f)
   (define-public-state background-color "Gainsboro")
   (define-public-state background-style 'solid)
   (define/public (add-data key val)
@@ -421,8 +426,8 @@
     (define the-font (send this get-font))
     (define-values (b-w b-h)
       (super get-min-extent))
-    (define pic (pict:text text the-font))
-    (values (+ b-w (pict-width pic)) (+ b-h (pict-height pic))))
+    (define-values (w h _ _*) (send text-size-dc get-text-extent text the-font))
+    (values (+ b-w w) (+ b-h h)))
   (define/override (draw dc x y w h)
     (super draw dc x y w h)
     (define old-font (send dc get-font))
@@ -558,10 +563,11 @@
     (when (send this has-focus?)
       (define pre-str (substring text 0 caret))
       (define the-font (send this get-font))
-      (define pic (pict:text pre-str the-font))
+      (define caret-text (substring text 0 caret))
+      (define-values (w h _ _*) (send text-size-dc get-text-extent caret-text the-font))
       (define old-pen (send dc get-pen))
       (send dc set-pen "black" 1 'solid)
-      (send dc draw-line (+ x (pict-width pic)) y (+ x (pict-width pic)) (+ y h))
+      (send dc draw-line (+ x w) y (+ x w) (+ y h))
       (send dc set-pen old-pen)))
   (define/override (on-keyboard-event event)
     (super on-keyboard-event event)
