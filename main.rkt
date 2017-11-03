@@ -168,6 +168,11 @@
                          body ...)
            name))]))
 
+(define idmt-context<$>
+  (interface ()
+    resized
+    recounted))
+
 (define idmt<$>
   (interface*
    ()
@@ -175,7 +180,7 @@
      (λ (this format default)
        (case format
          [(png-bytes)
-          (define-values (w* h*) (send this get-min-extent))
+          (define-values (w* h* l t r b) (send this get-extent 0 0))
           (define w (exact-ceiling (max w* 1)))
           (define h (exact-ceiling (max h* 1)))
           (define bit (make-object bitmap% w h))
@@ -184,77 +189,20 @@
           (send bit save-file s 'png)
           (get-output-bytes s)]
          [else default]))])
-   get-min-extent
-   get-max-extent
-   set-current-extent
-   get-current-extent
+   invalidate-extent-cache
+   partial-extent
+   get-extent
+   resize
    draw
-   on-mouse-event
-   on-keyboard-event))
+   get-count
+   split
+   merge
+   on-event
+   on-goodbye-event
+   get-context
+   register-context))
 
-(define text-size-dc
-  (new bitmap-dc% [bitmap (make-object bitmap% 1 1)]))
-
-(define-base-idmt* base$ object% (idmt<$>)
-  (super-new)
-  (define-state x #f)
-  (define-state y #f)
-  (define-state width #f)
-  (define-state height #f)
-  (define-state margin-top #f)
-  (define-state margin-bottom #f)
-  (define-state margin-left #f)
-  (define-state margin-right #f)
-  (define-public-state background-color "Gainsboro")
-  (define-public-state background-style 'solid)
-  (define/public (add-data key val)
-    (void))
-  (define/public (copy)
-    (deserialize (serialize this)))
-  (define/public (draw dc x y w h)
-    (define old-pen (send dc get-pen))
-    (define old-brush (send dc get-brush))
-    (send dc set-pen
-          (new pen%
-               [style 'transparent]))
-    (send dc set-brush
-          background-color background-style)
-    (send dc draw-rectangle x y w h)
-    (send dc set-pen old-pen)
-    (send dc set-brush old-brush))
-  (define/public (get-min-extent)
-    (values 0 0))
-  (define/public (on-mouse-event event)
-    (void))
-  (define/public (on-keyboard-event event)
-    (void))
-  (define/public (get-max-extent)
-    (values +inf.0 +inf.0))
-  (define/public (set-current-extent nx ny nw nh)
-    (set! x nx)
-    (set! y ny)
-    (set! width nw)
-    (set! height nh))
-  (define/public (get-current-extent)
-    (values x y width height)))
-
-(define-idmt-mixin receiver$$
-  (super-new)
-  (define/public (on-receive event)
-    (void))
-  (define/public (signal event)
-    (on-receive event)))
-
-(define-idmt-mixin signaler$$
-  (super-new)
-  (define-public-state receivers (mutable-set))
-  (define/public (signal event)
-    (for ([r (in-set receivers)])
-      (send r signal event)))
-  (define/public (register-receiver x)
-    (set-add! receivers x))
-  (define/public (unregister-receiver x)
-    (set-remove! receivers x)))
+;; ===================================================================================================
 
 (define idmt-canvas%
   (class canvas%
@@ -264,7 +212,8 @@
     (super-new [min-width (exact-ceiling init-min-width)]
                [min-height (exact-ceiling init-min-height)]
                [paint-callback (λ (c dc)
-                                 (send idmt set-current-extent 0 0 (send c get-width) (send c get-height))
+                                 (send idmt set-current-extent
+                                       0 0 (send c get-width) (send c get-height))
                                  (send idmt draw dc 0 0 (send c get-width) (send c get-height))
                                  (define-values (w h) (send idmt get-min-extent))
                                  (send this min-width (exact-ceiling w))
@@ -297,11 +246,239 @@
       (new idmt-snip%
            [idmt (send idmt copy)]))))
 
+;; ===================================================================================================
+
+(define text-size-dc
+  (new bitmap-dc% [bitmap (make-object bitmap% 1 1)]))
+
+(define-base-idmt* base$ object% (idmt<$>)
+  (super-new)
+  (define context #f)
+  (define/public (copy)
+    (deserialize (serialize this)))
+  (define/public (draw dc x y w h)
+    (void))
+  (define/public (partial-extent x y len)
+    (values 0 0))
+  (define/public (get-extent x y)
+    (values 0 0 0 0 0 0))
+  (define/public (resize w h)
+    #f)
+  (define/public (invalidate-extent-cache)
+    (void))
+  (define/public (get-count)
+    1)
+  (define/public (split count)
+    (error 'split "TODO"))
+  (define/public (merge . args)
+    (error 'merge "TODO"))
+  (define/public (on-event event)
+    (void))
+  (define/public (on-goodbye-event event)
+    (void))
+  (define/public (get-context)
+    context)
+  (define/public (register-context ctx)
+    (set! context ctx)))
+
+(define-idmt-mixin receiver$$
+  (super-new)
+  (define/public (on-receive event)
+    (void))
+  (define/public (signal event)
+    (on-receive event)))
+
+(define-idmt-mixin signaler$$
+  (super-new)
+  (define-public-state receivers (mutable-set))
+  (define/public (signal event)
+    (for ([r (in-set receivers)])
+      (send r signal event)))
+  (define/public (register-receiver x)
+    (set-add! receivers x))
+  (define/public (unregister-receiver x)
+    (set-remove! receivers x)))
+
 (define-idmt widget$ base$
   (super-new)
-  ;(init-field [font normal-control-font])
-  (init [(internal-font font) normal-control-font]
-        [(internal-parent parent) #f])
+  (init [(internal-parent parent) #f])
+  (define-state content-width 0)
+  (define-state content-height 0)
+  (define-state top-margin 1)
+  (define-state bottom-margin 1)
+  (define-state left-margin 1)
+  (define-state right-margin 1)
+  (define/public (get-margin)
+    (values top-margin bottom-margin left-margin right-margin))
+  (define/public (set-margin l t r b)
+    (set! left-margin l)
+    (set! right-margin r)
+    (set! top-margin t)
+    (set! bottom-margin b)
+    (resize (+ content-width l r) (+ content-height t b)))
+  (define-state background '("Gainsboro" #f))
+  (define/public (get-background)
+    (define color
+      (match (first background)
+        [(list r g b a) (make-object color% r g b a)]
+        [str str]))
+    (new brush%
+         [color color]
+         [style (second background)]
+         [stipple (third background)]
+         ;[gradient (fourth background)]
+         [transformation (fifth background)]))
+  (define/public (set-background brush/color [style #f])
+    (define (color->quad c)
+      (cond
+        [(is-a? c color%)
+         (list (send c red) (send c green) (send c blue) (send c alpha))]
+        [else c]))
+    (cond
+      [(is-a? brush/color brush%)
+       (list (color->quad (send brush/color get-color))
+             (send brush/color get-style)
+             (send brush/color get-stipple)
+             #f ;(send brush/color get-gradient)
+             (send brush/color get-transformation))]
+      [else (list (color->quad brush/color) (or style 'solid) #f #f #f)]))
+  (define-state parent #f)
+  (define-state count 1)
+  (define/override (get-count)
+    count)
+  (define/public (set-count c)
+    (define c (send this get-context))
+    (set! count c)
+    (when c
+      (send c recounted)))
+  (define/override (draw dc x y w h)
+    (define old-pen (send dc get-pen))
+    (define old-brush (send dc get-brush))
+    (send dc set-pen
+          (new pen%
+               [style 'transparent]))
+    (send dc set-brush (send this get-background))
+    (send dc draw-rectangle x y w h)
+    (send dc set-pen old-pen)
+    (send dc set-brush old-brush))
+  (define/public (get-content-extent)
+    (values content-width content-height))
+  (define/public (resize-content w h)
+    (resize (+ w left-margin right-margin)
+            (+ h top-margin bottom-margin)))
+  (define/override (get-extent)
+    (values (+ content-width left-margin right-margin)
+            (+ content-height top-margin bottom-margin)
+            left-margin top-margin right-margin bottom-margin))
+  (define/override (resize w h)
+    (let/ec return
+      (define c (send this get-context))
+      (unless c
+        (return #f))
+      (define c-w (- w left-margin right-margin))
+      (define c-h (- h top-margin bottom-margin))
+      (set! content-width c-w)
+      (set! content-height c-h)
+      (send c resized)
+      #t))
+  (define/public (get-parent)
+    parent)
+  (define/public (register-parent other)
+    (set! parent other))
+  (define/public (add-child child)
+    (error 'add-child "IDMT does not have children"))
+  (define/public (remove-child child)
+    (error 'remove-child "IDMT does not have children"))
+  (when internal-parent
+    (register-parent internal-parent)
+    (send parent add-child this)))
+
+(define-idmt-mixin list-block$$
+  (inherit/super get-extent)
+  (init [(ixa x-append)]
+        [(iya y-append)])
+  (super-new)
+  (define x-append ixa)
+  (define y-append iya)
+  (define-public-state idmt-list '())
+  (define/override (add-child idmt)
+    (set! idmt-list (append idmt-list (list idmt)))
+    (send idmt register-parent this)
+    (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
+    (send this resize w h)
+    (send this set-count (length idmt-list)))
+  (define/override (remove-child idmt)
+    (when (empty? idmt-list)
+      (error 'remove-idmt "List widget already emtpy"))
+    (send idmt register-parent #f)
+    (set! idmt-list (take idmt-list (sub1 (length idmt-list))))
+    (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
+    (send this resize w h)
+    (send this set-count (length idmt-list)))
+  (define/public (get-child-extents sx sy)
+    (match-define-values (_ _ l t r b) (super get-extent sx sy))
+    (for/fold ([res '()]
+               [x (+ l sx)]
+               [y (+ t sy)]
+               #:result (values (reverse res)
+                                (- (+ x r) sx)
+                                (- (+ y b) sy)
+                                l t r b))
+              ([i (in-list idmt-list)])
+      (define-values (w h l t r b)
+        (send i get-extent x y))
+      (values (cons (list w h l t r b) rest)
+              (x-append x w)
+              (y-append y h))))
+  (define/public (draw-child dc x y)
+    (match-define-values (extents _ _ l t r b) (get-child-extents x y x-append y-append))
+    (for/fold ([x (+ l x)]
+               [y (+ t y)])
+              ([i (in-list idmt-list)]
+               [e (in-list extents)])
+      (define w (first e))
+      (define h (second e))
+      (send i draw dc x y)
+      (values (x-append x w)
+              (y-append y h)))
+    (void))
+  (define/override (on-event event)
+    (super on-event event)
+    (for/list ([i (in-list idmt-list)])
+      (send i on-event event)))
+  (define/override (on-goodbye-event event)
+    (super on-goodbye-event event)
+    (for/list ([i (in-list idmt-list)])
+      (send i on-goodbye-event event))))
+
+(define-idmt vertical-block$ (list-block$$ widget$)
+  (super-new [x-append max]
+             [y-append +])
+  (define/override (get-extent x y)
+    (define-values (extents w h l t r b)
+      (send this get-child-extents x y))
+    (values w h l t r b))
+  (define/override (draw dc x y)
+    (super draw dc x y)
+    (send this draw-child dc x y)))
+
+(define-idmt horizontal-block$ (list-block$$ widget$)
+  (super-new [x-append +]
+             [y-append max])
+  (define/override (get-extent x y)
+    (define-values (extents w h l t r b)
+      (send this get-child-extents x y))
+    (values w h l t r b))
+  (define/override (draw dc x y)
+    (super draw dc x y)
+    (send this draw-child dc x y)))
+
+(define-idmt-mixin text$$
+  (super-new)
+  (init [(internal-font font) normal-control-font])
+  (define-state text "")
+  (define-state text-width 0)
+  (define-state text-height 0)
   (define-state font '())
   (define/public (get-font)
     (apply make-object font% font))
@@ -315,173 +492,98 @@
                      (send f get-smoothing)
                      (send f get-size-in-pixels)
                      (send f get-hinting))))
-  (set-font internal-font)
-  (define-public-state vert-margin 2)
-  (define-public-state horiz-margin 2)
-  (define-public-state style '())
-  (define-public-state parent internal-parent)
-  (define/override (get-min-extent)
-    (values (* 2 vert-margin) (* 2 horiz-margin)))
-  (define/public (register-parent other)
-    (set! parent other))
-  (define/public (get-child-extent child)
-    (error 'get-child-extent "IDMT does not have children")))
-
-(define-idmt list-widget$ widget$
-  (inherit/super get-min-extent
-                 set-current-extent)
-  (super-new)
-  (define-public-state idmt-list '())
-  (define/public (add-idmt idmt)
-    (set! idmt-list (append idmt-list (list idmt)))
-    (send idmt register-parent this))
-  (define/public (remove-idmt idmt)
-    (when (empty? idmt-list)
-      (error 'remove-idmt "List widget already emtpy"))
-    (send idmt register-parent #f)
-    (set! idmt-list (take idmt-list (sub1 (length idmt-list)))))
-  (define/public (get-get-min-extent w-compose h-compose)
-    (define-values (base-w base-h)
-      (super get-min-extent))
-    (define-values (w h)
-      (for/fold ([width 0]
-                 [height 0])
-                ([i (in-list idmt-list)])
-        (define-values (w h)
-          (send i get-min-extent))
-        (values (w-compose w width)
-                (h-compose h height))))
-    (values (+ base-w w) (+ base-h h)))
-  (define/public (get-draw x-acc y-acc item-width item-height dc x y w h)
-    (for/fold ([x x]
-               [y y])
-              ([i (in-list idmt-list)])
-      (send i draw dc x y item-width item-height)
-      (values (+ x-acc x) (+ y-acc y)))
-    (void))
-  (define/override (on-mouse-event event)
-    (super on-mouse-event event)
-    (for/list ([i (in-list idmt-list)])
-      (send i on-mouse-event event)))
-  (define/override (on-keyboard-event event)
-    (super on-keyboard-event event)
-    (for/list ([i (in-list idmt-list)])
-      (send i on-keyboard-event event)))
-  (define/public (get-item-dim h)
-    (if (empty? idmt-list) #f (/ h (length idmt-list))))
-  (define/public (get-set-current-extent x-acc y-acc item-width item-height x y w h)
-    (super set-current-extent x y w h)
-    (for/fold ([x x]
-               [y y])
-              ([i (in-list idmt-list)])
-      (send i set-current-extent x y item-width item-height)
-      (values (+ x-acc x) (+ y-acc y)))
-    (void)))
-
-(define-idmt vertical-block$ list-widget$
-  (super-new)
-  (inherit-field idmt-list)
-  (define/override (get-min-extent)
-    (send this get-get-min-extent max +))
-  (define/override (draw dc x y w h)
-    (super draw dc x y w h)
-    (define item-height (send this get-item-dim h))
-    (send this get-draw 0 item-height w item-height
-          dc x y w h))
-  (define/override (set-current-extent x y w h)
-    (define item-height (send this get-item-dim h))
-    (send this get-set-current-extent 0 item-height w item-height x y w h)))
-
-(define-idmt horizontal-block$ list-widget$
-  (super-new)
-  (inherit-field idmt-list)
-  (define/override (get-min-extent)
-    (define-values (b-w b-h)
-      (super get-min-extent))
-    (define-values (w h)
-      (for/fold ([width 0]
-                 [height 0])
-                ([i (in-list idmt-list)])
-        (define-values (w h)
-          (send i get-min-extent))
-        (values (+ w width)
-                (max h height))))
-    (values (+ b-w w) (+ b-h h)))
-  (define/override (draw dc x y w h)
-    (super draw dc x y w h)
-    (define item-width (if (empty? idmt-list) #f (/ w (length idmt-list))))
-    (for/fold ([x x])
-              ([i (in-list idmt-list)])
-      (send i draw dc x y item-width h)
-      (values (+ x item-width)))
-    (void)))
-
-(define-idmt-mixin text$$
-  (super-new)
-  (inherit-field horiz-margin
-                 vert-margin)
-  (define-public-state text "")
-  (define-public-state scale? #f)
-  (set-field! background-style this 'transparent)
-  (define/override (get-min-extent)
-    (define the-font (send this get-font))
-    (define-values (b-w b-h)
-      (super get-min-extent))
-    (define-values (w h _ _*) (send text-size-dc get-text-extent text the-font))
-    (values (+ b-w w) (+ b-h h)))
-  (define/override (draw dc x y w h)
-    (super draw dc x y w h)
+  (define-state scale? #f)
+  (send this set-background "white" 'transparent)
+  (define/public (set-text t)
+    (match-define-values (w h _ _) (send text-size-dc get-text-extent t (send this get-font)))
+    (set! text t)
+    (set! text-width w)
+    (set! text-height h)
+    (define-values (l t r b) (send this get-margin))
+    (send this resize (+ text-width l r) (+ text-height t b)))
+  (define/public (get-text t)
+    text)
+  (define/override (draw dc x y)
+    (super draw dc x y)
+    (define-values (l t r b) (send this get-margin))
     (define old-font (send dc get-font))
     (send dc set-font (send this get-font))
-    (send dc draw-text text (+ horiz-margin x) (+ vert-margin y))
-    (send dc set-font old-font)))
+    (send dc draw-text text (+ l x) (+ t y))
+    (send dc set-font old-font))
+  (set-font internal-font))
 
 (define-idmt label$ (text$$ widget$)
-  (inherit-field text)
   (super-new)
   (init [(internal-text text) #f])
-  (set! text internal-text))
+  (send this set-text internal-text))
 
-(define-idmt button$ (signaler$$ widget$)
+(define-idmt-mixin padding$$
   (super-new)
-  (inherit-field horiz-margin
-                 vert-margin)
+  (define-state left-padding 1)
+  (define-state top-padding 1)
+  (define-state right-padding 1)
+  (define-state bottom-padding 1)
+  (define-state content-width 0)
+  (define-state content-height 0)
+  (define/public (get-padding)
+    (values left-padding top-padding right-padding bottom-padding))
+  (define/override (get-content-extent)
+    (values content-width content-height))
+  (define/override (resize-content w h)
+    (and (super resize-content
+                (+ w left-padding right-padding)
+                (+ h top-padding bottom-padding))
+         (set! content-width w)
+         (set! content-height h)))
+  (define/public (set-padding l t r b)
+    (and (super resize-content (+ content-width l r) (+ content-height t b))
+         (set! left-padding l)
+         (set! top-padding t)
+         (set! right-padding r)
+         (set! bottom-padding b)
+         (super resize-content (+ content-width l r) (+ content-height t b)))))
+
+(define-idmt button$ (signaler$$ (padding$$ widget$))
+  (super-new)
   (init [(internal-label label) (new label$)])
   (define mouse-state 'up)
   (define-state label* internal-label)
   (define-state up-color "Silver")
   (define-state hover-color "DarkGray")
   (define-state down-color "DimGray")
-  (define/override (on-mouse-event event)
-    (define-values (x y w h)
-      (send this get-current-extent))
-    (define x-max (+ x w))
-    (define y-max (+ y h))
-    (define mouse-x (send event get-x))
-    (define mouse-y (send event get-y))
-    (define in-button?
-      (and (<= x mouse-x x-max)
-           (<= y mouse-y y-max)))
-    (match (send event get-event-type)
-      ['left-down
-       (when (and in-button? (eq? mouse-state 'hover))
-         (set! mouse-state 'down))]
-      ['left-up
-       (when (and in-button? (eq? mouse-state 'down))
-         (if in-button?
-             (set! mouse-state 'hover)
-             (set! mouse-state 'up))
-         (send this signal this))]
-      ['motion
-       (match mouse-state
-         [(or 'up 'hover)
-          (if in-button?
-           (set! mouse-state 'hover)
-           (set! mouse-state 'up))]
-         ['down
-          (unless in-button?
-            (set! mouse-state 'up))])]
-      [_ (void)]))
+  (define/override (on-event event)
+    (super on-event event)
+    (cond
+      [(is-a? event mouse-event%)
+       (define-values (x y w h)
+         (send this get-current-extent))
+       (define x-max (+ x w))
+       (define y-max (+ y h))
+       (define mouse-x (send event get-x))
+       (define mouse-y (send event get-y))
+       (define in-button?
+         (and (<= x mouse-x x-max)
+              (<= y mouse-y y-max)))
+       (match (send event get-event-type)
+         ['left-down
+          (when (and in-button? (eq? mouse-state 'hover))
+            (set! mouse-state 'down))]
+         ['left-up
+          (when (and in-button? (eq? mouse-state 'down))
+            (if in-button?
+                (set! mouse-state 'hover)
+                (set! mouse-state 'up))
+            (send this signal this))]
+         ['motion
+          (match mouse-state
+            [(or 'up 'hover)
+             (if in-button?
+                 (set! mouse-state 'hover)
+                 (set! mouse-state 'up))]
+            ['down
+             (unless in-button?
+               (set! mouse-state 'up))])]
+         [_ (void)])]))
   (define/override (get-min-extent)
     (define-values (b-w b-h)
       (super get-min-extent))
@@ -489,7 +591,12 @@
       (send label* get-min-extent))
     (values (+ b-w w) (+ b-h h)))
   (define/override (draw dc x y w h)
-    (super draw dc x y w h)
+    (super draw dc x y)
+    (define-values (pl pt pr pb) (send this get-padding))
+    (define-values (ml mt mr mb) (send this get-margin))
+    (define-values (cw ch) (send this get-content-extent))
+    (define mx (+ x ml))
+    (define my (+ y mt))
     (define old-pen (send dc get-pen))
     (define old-brush (send dc get-brush))
     (send dc set-pen
@@ -500,19 +607,15 @@
                                  ['up up-color]
                                  ['hover hover-color]
                                  ['down down-color]))]))
-    (send dc draw-rectangle
-          (+ x horiz-margin) (+ y vert-margin)
-          (- w (* 2 horiz-margin)) (- h (* 2 vert-margin)))
-    (send label* draw dc
-          (+ x horiz-margin) (+ y vert-margin)
-          (- w (* 2 horiz-margin)) (- h (* 2 vert-margin)))
+    (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
+    (send label* draw dc (+ mx pl) (+ my pt))
     (send dc set-pen old-pen)
     (send dc set-brush old-brush)))
 
 (define-idmt toggle$ widget$
   (super-new))
 
-(define-idmt radio$ list-widget$
+(define-idmt radio$ (list-block$$ widget$)
   (super-new))
 
 (define-idmt-mixin focus$$
@@ -521,43 +624,45 @@
   (define mouse-state 'up)
   (define/public (has-focus?)
     focus?)
-  (define/override (on-mouse-event event)
-    (define-values (x y w h)
-      (send this get-current-extent))
-    (define x-max (+ x w))
-    (define y-max (+ y h))
-    (define mouse-x (send event get-x))
-    (define mouse-y (send event get-y))
-    (define in-button?
-      (and (<= x mouse-x x-max)
-           (<= y mouse-y y-max)))
-    (match (send event get-event-type)
-      ['left-down
-       (if (and in-button? (eq? mouse-state 'hover))
-           (set! focus? #t)
-           (set! focus? #f))]
-      ['left-up
-       (when (and in-button? (eq? mouse-state 'down))
-         (if in-button?
-             (set! mouse-state 'hover)
-             (set! mouse-state 'up))
-         (send this signal this))]
-      ['motion
-       (match mouse-state
-         [(or 'up 'hover)
-          (if in-button?
-           (set! mouse-state 'hover)
-           (set! mouse-state 'up))]
-         ['down
-          (unless in-button?
-            (set! mouse-state 'up))])]
-      [_ (void)])))
+  (define/override (on-event event)
+    (super on-event event)
+    (cond
+      [(is-a? event mouse-event%)
+       (define-values (x y w h)
+         (send this get-current-extent))
+       (define x-max (+ x w))
+       (define y-max (+ y h))
+       (define mouse-x (send event get-x))
+       (define mouse-y (send event get-y))
+       (define in-button?
+         (and (<= x mouse-x x-max)
+              (<= y mouse-y y-max)))
+       (match (send event get-event-type)
+         ['left-down
+          (if (and in-button? (eq? mouse-state 'hover))
+              (set! focus? #t)
+              (set! focus? #f))]
+         ['left-up
+          (when (and in-button? (eq? mouse-state 'down))
+            (if in-button?
+                (set! mouse-state 'hover)
+                (set! mouse-state 'up))
+            (send this signal this))]
+         ['motion
+          (match mouse-state
+            [(or 'up 'hover)
+             (if in-button?
+                 (set! mouse-state 'hover)
+                 (set! mouse-state 'up))]
+            ['down
+             (unless in-button?
+               (set! mouse-state 'up))])]
+         [_ (void)])])))
 
 (define-idmt field$ (focus$$ (text$$ widget$))
   (inherit-field text)
   (super-new)
-  (set-field! background-style this 'solid)
-  (set-field! background-color this "white")
+  (send this set-background "white")
   (define-state caret 0)
   (define/override (draw dc x y w h)
     (super draw dc x y w h)
