@@ -15,13 +15,27 @@
     (send idmt add-idmt (new label$ [text (format "Item: ~a" counter)]))
     (set! counter (add1 counter))))
 (define-idmt save$ (receiver$$ widget$)
-  (inherit-field parent)
   (super-new)
   (define/override (on-receive event)
-    (pretty-print (serialize parent))))
-(send idmt add-idmt (new label$ [text "Hello"]))
-(send idmt add-idmt (new label$ [text "World"]))
-(send idmt add-idmt (new label$ [text "I am an IDMT!!!"]))
+    (pretty-print (serialize (send this get-parent)))))
+(new label$
+     [parent idmt]
+     [text "Hello"])
+(new label$
+     [parent idmt]
+     [text "World"])
+(new label$
+     [parent idmt]
+     [text "I am an IDMT!!!"])
+idmt
+
+(define f (new frame% [label "IDMT"]))
+(new idmt-canvas%
+     [parent f]
+     [idmt idmt])
+(send f show #t)
+
+#|
 (define btn (new button$ [label (new label$ [text "CLICK ME!"])]))
 (send btn register-receiver (new add-item$))
 (send idmt add-idmt btn)
@@ -31,12 +45,8 @@
 (send btn2 register-receiver save)
 (send save register-parent idmt)
 (send idmt add-idmt btn2)
-(define f (new frame% [label "IDMT"]))
-(new idmt-canvas%
-     [parent f]
-     [idmt idmt])
-(send f show #t)
 ;(serialize idmt)
 ;(deserialize (serialize idmt))
 ;(new idmt-snip%
 ;     [idmt idmt])
+|#

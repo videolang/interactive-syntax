@@ -45,7 +45,7 @@
      #`(defstate-parameter #,stx define-public-state)]))
 
 (define-syntax (~define-idmt stx)
- (syntax-parse stx
+  (syntax-parse stx
     [(_ orig-stx name:id supclss (interfaces ...)
         (~or (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
              (~optional (~seq #:direct-deserialize? dd?) #:defaults ([dd? #'#t])))
@@ -83,7 +83,7 @@
          (splicing-syntax-parameterize ([defstate-parameter
                                           (syntax-parser
                                             [(_ st:defstate who)
-                                             #'(field [st.name st.body (... ...)])]
+                                             #'(define st.name st.body (... ...))]
                                             [(_ st:defpubstate who)
                                              #'(field [st.name st.body (... ...)])])])
            (define name
@@ -184,7 +184,7 @@
           (define w (exact-ceiling (max w* 1)))
           (define h (exact-ceiling (max h* 1)))
           (define bit (make-object bitmap% w h))
-          (send this draw (new bitmap-dc% [bitmap bit]) 0 0 w h)
+          (send this draw (new bitmap-dc% [bitmap bit]) 0 0)
           (define s (open-output-bytes))
           (send bit save-file s 'png)
           (get-output-bytes s)]
@@ -207,22 +207,20 @@
 (define idmt-canvas%
   (class canvas%
     (init-field idmt)
-    (define-values (init-min-width init-min-height)
-      (send idmt get-min-extent))
-    (super-new [min-width (exact-ceiling init-min-width)]
-               [min-height (exact-ceiling init-min-height)]
+    (match-define-values (width height _ _ _ _) (send idmt get-extent 0 0))
+    (super-new [min-width (exact-ceiling width)]
+               [min-height (exact-ceiling height)]
                [paint-callback (λ (c dc)
-                                 (send idmt set-current-extent
-                                       0 0 (send c get-width) (send c get-height))
-                                 (send idmt draw dc 0 0 (send c get-width) (send c get-height))
-                                 (define-values (w h) (send idmt get-min-extent))
-                                 (send this min-width (exact-ceiling w))
-                                 (send this min-height (exact-ceiling h)))])
+                                 (send idmt draw dc 0 0)
+                                 (match-define-values (width height _ _ _ _)
+                                   (send idmt get-extent 0 0))
+                                 (send this min-width (exact-ceiling width))
+                                 (send this min-height (exact-ceiling height)))])
     (define/override (on-event event)
-      (send idmt on-mouse-event event)
+      (send idmt on-event event)
       (send this refresh))
     (define/override (on-char event)
-      (send idmt on-keyboard-event event)
+      (send idmt on-event event)
       (send this refresh))))
 
 (define idmt-snip%
@@ -256,7 +254,7 @@
   (define context #f)
   (define/public (copy)
     (deserialize (serialize this)))
-  (define/public (draw dc x y w h)
+  (define/public (draw dc x y)
     (void))
   (define/public (partial-extent x y len)
     (values 0 0))
@@ -316,7 +314,7 @@
     (set! top-margin t)
     (set! bottom-margin b)
     (resize (+ content-width l r) (+ content-height t b)))
-  (define-state background '("Gainsboro" #f))
+  (define-state background '("Gainsboro" solid #f #f #f))
   (define/public (get-background)
     (define color
       (match (first background)
@@ -324,7 +322,7 @@
         [str str]))
     (new brush%
          [color color]
-         [style (second background)]
+         [style (or (second background) 'solid)]
          [stipple (third background)]
          ;[gradient (fourth background)]
          [transformation (fifth background)]))
@@ -351,36 +349,36 @@
     (set! count c)
     (when c
       (send c recounted)))
-  (define/override (draw dc x y w h)
+  (define/override (draw dc x y)
     (define old-pen (send dc get-pen))
     (define old-brush (send dc get-brush))
     (send dc set-pen
           (new pen%
                [style 'transparent]))
     (send dc set-brush (send this get-background))
-    (send dc draw-rectangle x y w h)
+    (send dc draw-rectangle x y
+          (+ content-width left-margin right-margin)
+          (+ content-height top-margin bottom-margin))
     (send dc set-pen old-pen)
     (send dc set-brush old-brush))
   (define/public (get-content-extent)
     (values content-width content-height))
   (define/public (resize-content w h)
-    (resize (+ w left-margin right-margin)
-            (+ h top-margin bottom-margin)))
-  (define/override (get-extent)
+    (local-resize-content w h))
+  (define (local-resize-content w h)
+    (set! content-width w)
+    (set! content-height h)
+    (define c (send this get-context))
+    (when c
+      (send c resized)))
+  (define/override (get-extent x y)
     (values (+ content-width left-margin right-margin)
             (+ content-height top-margin bottom-margin)
             left-margin top-margin right-margin bottom-margin))
   (define/override (resize w h)
-    (let/ec return
-      (define c (send this get-context))
-      (unless c
-        (return #f))
-      (define c-w (- w left-margin right-margin))
-      (define c-h (- h top-margin bottom-margin))
-      (set! content-width c-w)
-      (set! content-height c-h)
-      (send c resized)
-      #t))
+    (define c-w (- w left-margin right-margin))
+    (define c-h (- h top-margin bottom-margin))
+    (local-resize-content c-w c-h))
   (define/public (get-parent)
     parent)
   (define/public (register-parent other)
@@ -395,11 +393,15 @@
 
 (define-idmt-mixin list-block$$
   (inherit/super get-extent)
-  (init [(ixa x-append)]
-        [(iya y-append)])
+  (init [(ixe x-extent)]
+        [(iye y-extent)]
+        [(ixd x-draw)]
+        [(iyd y-draw)])
   (super-new)
-  (define x-append ixa)
-  (define y-append iya)
+  (define x-extent ixe)
+  (define y-extent iye)
+  (define x-draw ixd)
+  (define y-draw iyd)
   (define-public-state idmt-list '())
   (define/override (add-child idmt)
     (set! idmt-list (append idmt-list (list idmt)))
@@ -427,11 +429,11 @@
               ([i (in-list idmt-list)])
       (define-values (w h l t r b)
         (send i get-extent x y))
-      (values (cons (list w h l t r b) rest)
-              (x-append x w)
-              (y-append y h))))
+      (values (cons (list w h l t r b) res)
+              (x-extent x w)
+              (y-extent y h))))
   (define/public (draw-child dc x y)
-    (match-define-values (extents _ _ l t r b) (get-child-extents x y x-append y-append))
+    (match-define-values (extents _ _ l t r b) (get-child-extents x y))
     (for/fold ([x (+ l x)]
                [y (+ t y)])
               ([i (in-list idmt-list)]
@@ -439,8 +441,8 @@
       (define w (first e))
       (define h (second e))
       (send i draw dc x y)
-      (values (x-append x w)
-              (y-append y h)))
+      (values (x-draw x w)
+              (y-draw y h)))
     (void))
   (define/override (on-event event)
     (super on-event event)
@@ -452,8 +454,10 @@
       (send i on-goodbye-event event))))
 
 (define-idmt vertical-block$ (list-block$$ widget$)
-  (super-new [x-append max]
-             [y-append +])
+  (super-new [x-extent max]
+             [y-extent +]
+             [x-draw (λ _ 0)]
+             [y-draw +])
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
@@ -499,8 +503,7 @@
     (set! text t)
     (set! text-width w)
     (set! text-height h)
-    (define-values (l t r b) (send this get-margin))
-    (send this resize (+ text-width l r) (+ text-height t b)))
+    (send this resize-content text-width text-height))
   (define/public (get-text t)
     text)
   (define/override (draw dc x y)
@@ -514,7 +517,7 @@
 
 (define-idmt label$ (text$$ widget$)
   (super-new)
-  (init [(internal-text text) #f])
+  (init [(internal-text text) ""])
   (send this set-text internal-text))
 
 (define-idmt-mixin padding$$
@@ -584,13 +587,7 @@
              (unless in-button?
                (set! mouse-state 'up))])]
          [_ (void)])]))
-  (define/override (get-min-extent)
-    (define-values (b-w b-h)
-      (super get-min-extent))
-    (define-values (w h)
-      (send label* get-min-extent))
-    (values (+ b-w w) (+ b-h h)))
-  (define/override (draw dc x y w h)
+  (define/override (draw dc x y)
     (super draw dc x y)
     (define-values (pl pt pr pb) (send this get-padding))
     (define-values (ml mt mr mb) (send this get-margin))
@@ -660,13 +657,13 @@
          [_ (void)])])))
 
 (define-idmt field$ (focus$$ (text$$ widget$))
-  (inherit-field text)
   (super-new)
   (send this set-background "white")
   (define-state caret 0)
-  (define/override (draw dc x y w h)
-    (super draw dc x y w h)
+  (define/override (draw dc x y)
+    (super draw dc x y)
     (when (send this has-focus?)
+      (define text (send this get-text))
       (define pre-str (substring text 0 caret))
       (define the-font (send this get-font))
       (define caret-text (substring text 0 caret))
@@ -675,35 +672,36 @@
       (send dc set-pen "black" 1 'solid)
       (send dc draw-line (+ x w) y (+ x w) (+ y h))
       (send dc set-pen old-pen)))
-  (define/override (on-keyboard-event event)
-    (super on-keyboard-event event)
-    (when (send this has-focus?)
-      (define char (send event get-key-code))
-      (match char
-        ['left
-         (set! caret (max 0 (sub1 caret)))]
-        ['right
-         (set! caret (min (string-length text) (add1 caret)))]
-        [(or #\newline #\return)
-         (void)]
-        [#\backspace
-         (set! text
-               (format "~a~a"
-                       (substring text 0 (max 0 (sub1 caret)))
-                       (substring text caret)))
-         (set! caret (max 0 (sub1 caret)))]
-        [#\rubout
-         (error "TODO")
-         #;(set! text
-                 (format "~a~a"
-                         (substring text 0 caret)
-                         (substring text (min (length text) (add1 caret)))))
-         #;(set! caret (min (sub1 (length text)) caret))]
-        [(? char?)
-         (set! text
-               (format "~a~a~a"
-                       (substring text 0 caret)
-                       char
-                       (substring text caret)))
-         (set! caret (add1 caret))]
-        [_ (void)]))))
+  (define/override (on-event event)
+    (super on-event event)
+    (define text (send this get-text))
+    (cond
+      [(is-a? event key-event%)
+       (when (send this has-focus?)
+         (define char (send event get-key-code))
+         (match char
+           ['left
+            (set! caret (max 0 (sub1 caret)))]
+           ['right
+            (set! caret (min (string-length text) (add1 caret)))]
+           [(or #\newline #\return)
+            (void)]
+           [#\backspace
+            (send this set-text (format "~a~a"
+                                        (substring text 0 (max 0 (sub1 caret)))
+                                        (substring text caret)))
+            (set! caret (max 0 (sub1 caret)))]
+           [#\rubout
+            (error "TODO")
+            #;(set! text
+                    (format "~a~a"
+                            (substring text 0 caret)
+                            (substring text (min (length text) (add1 caret)))))
+            #;(set! caret (min (sub1 (length text)) caret))]
+           [(? char?)
+            (send this set-text (format "~a~a~a"
+                                        (substring text 0 caret)
+                                        char
+                                        (substring text caret)))
+            (set! caret (add1 caret))]
+           [_ (void)]))])))
