@@ -202,6 +202,8 @@
    get-context
    register-context))
 
+(define-logger editor)
+
 ;; ===================================================================================================
 
 (define editor-canvas%
@@ -418,24 +420,24 @@
     (send this resize w h)
     (send this set-count (length editor-list)))
   (define/public (get-child-extents sx sy)
-    (define-values (w h l t r b) (super get-extent sx sy))
+    (define-values (sw sh l t r b) (super get-extent sx sy))
     (for/fold ([res '()]
-               [w (- w l r)]
-               [h (- h t b)]
+               [w 0]
+               [h 0]
                [x (+ l sx)]
                [y (+ t sy)]
                #:result (values (reverse res)
-                                (+ w l r)
-                                (+ h t b)
+                                (max sw (+ w l r))
+                                (max sh (+ h t b))
                                 l t r b))
               ([i (in-list editor-list)])
-      (define-values (w h l t r b)
+      (define-values (w* h* l t r b)
         (send i get-extent x y))
-      (values (cons (list w h l t r b) res)
-              (x-extent x w)
-              (y-extent y h)
-              (x-draw x w)
-              (y-draw y h))))
+      (values (cons (list w* h* l t r b) res)
+              (x-extent w w*)
+              (y-extent h h*)
+              (x-draw x w*)
+              (y-draw y h*))))
   (define/public (draw-child dc x y)
     (match-define-values (extents _ _ l t r b) (get-child-extents x y))
     (for/fold ([x (+ l x)]
@@ -465,6 +467,7 @@
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
+    (log-editor-debug "Vertical Extent: ~a" (list x y extents w h))
     (values w h l t r b))
   (define/override (draw dc x y)
     (super draw dc x y)
@@ -478,6 +481,7 @@
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
+    (log-editor-debug "Horizontal Extent: ~a" (list x y extents w h))
     (values w h l t r b))
   (define/override (draw dc x y)
     (super draw dc x y)
@@ -512,12 +516,6 @@
     (send this resize-content text-width text-height))
   (define/public (get-text t)
     text)
-  (define/override (get-extent x y)
-    (super get-extent x y)
-    (define-values (l t r b) (send this get-margin))
-    (define-values (w h a d)
-      (send text-size-dc get-text-extent text (send this get-font)))
-    (values (+ w l r) (+ h t b) l t r b))
   (define/override (draw dc x y)
     (super draw dc x y)
     (define-values (l t r b) (send this get-margin))
@@ -560,9 +558,9 @@
 
 (define-editor button$ (signaler$$ (padding$$ widget$))
   (super-new)
-  (init [(internal-label label) (new label$)])
+  (init [(internal-label label) #f])
   (define mouse-state 'up)
-  (define-state label* internal-label)
+  (define-state label #f)
   (define-state up-color "Silver")
   (define-state hover-color "DarkGray")
   (define-state down-color "DimGray")
@@ -597,6 +595,11 @@
              (unless in-button?
                (set! mouse-state 'up))])]
          [_ (void)])]))
+  (define/public (set-label l)
+    (set! label l)
+    (match-define-values (w h _ _ _ _)
+      (send l get-extent 0 0))
+    (send this resize-content w h))
   (define/override (draw dc x y)
     (super draw dc x y)
     (define-values (pl pt pr pb) (send this get-padding))
@@ -615,9 +618,10 @@
                                  ['hover hover-color]
                                  ['down down-color]))]))
     (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
-    (send label* draw dc (+ mx pl) (+ my pt))
+    (send label draw dc (+ mx pl) (+ my pt))
     (send dc set-pen old-pen)
-    (send dc set-brush old-brush)))
+    (send dc set-brush old-brush))
+  (set-label internal-label))
 
 (define-editor toggle$ widget$
   (super-new))
