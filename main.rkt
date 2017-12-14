@@ -390,17 +390,18 @@
     parent)
   (define/public (register-parent other)
     (set! parent other))
-  (define/public (add-child child)
-    (error 'add-child "editor does not have children"))
-  (define/public (remove-child child)
-    (error 'remove-child "editor does not have children"))
-  (define/public (resized-child child)
-    (error 'resized-child "editor does not have children"))
   (when internal-parent
     (register-parent internal-parent)
     (send parent add-child this)))
 
+(define parent<$>
+  (interface ()
+    add-child
+    remove-child
+    resized-child))
+
 (define-editor-mixin list-block$$
+  #:interfaces (parent<$>)
   (inherit/super get-extent)
   (init [(ixe x-extent)]
         [(iye y-extent)]
@@ -412,17 +413,17 @@
   (define y-draw iyd)
   (define-public-state editor-list '())
   (super-new)
-  (define/override (add-child editor)
+  (define/public (add-child editor)
     (set! editor-list (append editor-list (list editor)))
     (send editor register-parent this)
     (resized-child editor))
-  (define/override (remove-child editor)
+  (define/public (remove-child editor)
     (when (empty? editor-list)
       (error 'remove-editor "List widget already emtpy"))
     (send editor register-parent #f)
     (set! editor-list (take editor-list (sub1 (length editor-list))))
     (resized-child editor))
-  (define/override (resized-child child)
+  (define/public (resized-child child)
     (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
     (send this resize w h)
     (send this set-count (length editor-list)))
