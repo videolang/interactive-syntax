@@ -32,7 +32,7 @@
 (define-syntax-parameter defstate-parameter
   (syntax-parser
     [(_ stx who)
-     (raise-syntax-error #'who "Use outside of define-idmt is an error" this-syntax)]))
+     (raise-syntax-error #'who "Use outside of define-editor is an error" this-syntax)]))
 
 (define-syntax (define-state stx)
   (syntax-parse stx
@@ -44,7 +44,7 @@
     [x:defpubstate
      #`(defstate-parameter #,stx define-public-state)]))
 
-(define-syntax (~define-idmt stx)
+(define-syntax (~define-editor stx)
   (syntax-parse stx
     [(_ orig-stx name:id supclss (interfaces ...)
         (~or (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
@@ -138,20 +138,20 @@
                 (#,(if base? #'public #'override) #,copy-method)
                 body ...)))))]))
 
-(define-syntax (define-base-idmt* stx)
+(define-syntax (define-base-editor* stx)
   (syntax-parse stx
     [(_ name:id super (interfaces ...) body ...)
-     #`(~define-idmt #,stx name super (interfaces ...) #:base? #t body ...)]))
+     #`(~define-editor #,stx name super (interfaces ...) #:base? #t body ...)]))
 
-(define-syntax (define-idmt stx)
+(define-syntax (define-editor stx)
   (syntax-parse stx
     [(_ name:id super
         (~or (~optional (~seq #:interfaces (interfaces ...)) #:defaults ([(interfaces 1) '()])))
         ...
         body ...)
-     #`(~define-idmt #,stx name super (interfaces ...) body ...)]))
+     #`(~define-editor #,stx name super (interfaces ...) body ...)]))
 
-(define-syntax (define-idmt-mixin stx)
+(define-syntax (define-editor-mixin stx)
   (syntax-parse stx
     [(_ name:id
         (~or (~optional (~seq #:interfaces (interfaces ...)) #:defaults ([(interfaces 1) '()]))
@@ -160,20 +160,20 @@
         body ...)
      #`(begin
          (define (name $)
-           (~define-idmt #,stx
-                         name
-                         ((compose #,@(reverse (attribute mixins))) $)
-                         (interfaces ...)
-                         #:direct-deserialize? #f
-                         body ...)
+           (~define-editor #,stx
+                           name
+                           ((compose #,@(reverse (attribute mixins))) $)
+                           (interfaces ...)
+                           #:direct-deserialize? #f
+                           body ...)
            name))]))
 
-(define idmt-context<$>
+(define editor-context<$>
   (interface ()
     resized
     recounted))
 
-(define idmt<$>
+(define editor<$>
   (interface*
    ()
    ([prop:convertible
@@ -204,52 +204,52 @@
 
 ;; ===================================================================================================
 
-(define idmt-canvas%
+(define editor-canvas%
   (class canvas%
-    (init-field idmt)
-    (match-define-values (width height _ _ _ _) (send idmt get-extent 0 0))
+    (init-field editor)
+    (match-define-values (width height _ _ _ _) (send editor get-extent 0 0))
     (super-new [min-width (exact-ceiling width)]
                [min-height (exact-ceiling height)]
                [paint-callback (λ (c dc)
-                                 (send idmt draw dc 0 0)
+                                 (send editor draw dc 0 0)
                                  (match-define-values (width height _ _ _ _)
-                                   (send idmt get-extent 0 0))
+                                   (send editor get-extent 0 0))
                                  (send this min-width (exact-ceiling width))
                                  (send this min-height (exact-ceiling height)))])
     (define/override (on-event event)
-      (send idmt on-event event)
+      (send editor on-event event)
       (send this refresh))
     (define/override (on-char event)
-      (send idmt on-event event)
+      (send editor on-event event)
       (send this refresh))))
 
-(define idmt-snip%
+(define editor-snip%
   (class snip%
     (inherit get-flags set-flags)
-    (init-field idmt)
+    (init-field editor)
     (super-new)
     (set-flags (cons 'handles-events (get-flags)))
     (define (get-size)
-      (send idmt get-min-extent))
+      (send editor get-min-extent))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
       (define-values (w* h*) (get-size))
       (when w (set-box! w w*))
       (when h (set-box! h h*)))
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
       (define-values (w h) (get-size))
-      (send idmt draw dc x y w h))
+      (send editor draw dc x y w h))
     (define/override (on-event dc x y ex ey event)
-      (send idmt on-mouse-event event))
+      (send editor on-mouse-event event))
     (define/override (copy)
-      (new idmt-snip%
-           [idmt (send idmt copy)]))))
+      (new editor-snip%
+           [editor (send editor copy)]))))
 
 ;; ===================================================================================================
 
 (define text-size-dc
   (new bitmap-dc% [bitmap (make-object bitmap% 1 1)]))
 
-(define-base-idmt* base$ object% (idmt<$>)
+(define-base-editor* base$ object% (editor<$>)
   (super-new)
   (define context #f)
   (define/public (copy)
@@ -279,14 +279,14 @@
   (define/public (register-context ctx)
     (set! context ctx)))
 
-(define-idmt-mixin receiver$$
+(define-editor-mixin receiver$$
   (super-new)
   (define/public (on-receive event)
     (void))
   (define/public (signal event)
     (on-receive event)))
 
-(define-idmt-mixin signaler$$
+(define-editor-mixin signaler$$
   (super-new)
   (define-public-state receivers (mutable-set))
   (define/public (signal event)
@@ -297,7 +297,7 @@
   (define/public (unregister-receiver x)
     (set-remove! receivers x)))
 
-(define-idmt widget$ base$
+(define-editor widget$ base$
   (super-new)
   (init [(internal-parent parent) #f])
   (define-state content-width 0)
@@ -384,14 +384,14 @@
   (define/public (register-parent other)
     (set! parent other))
   (define/public (add-child child)
-    (error 'add-child "IDMT does not have children"))
+    (error 'add-child "editor does not have children"))
   (define/public (remove-child child)
-    (error 'remove-child "IDMT does not have children"))
+    (error 'remove-child "editor does not have children"))
   (when internal-parent
     (register-parent internal-parent)
     (send parent add-child this)))
 
-(define-idmt-mixin list-block$$
+(define-editor-mixin list-block$$
   (inherit/super get-extent)
   (init [(ixe x-extent)]
         [(iye y-extent)]
@@ -402,41 +402,45 @@
   (define y-extent iye)
   (define x-draw ixd)
   (define y-draw iyd)
-  (define-public-state idmt-list '())
-  (define/override (add-child idmt)
-    (set! idmt-list (append idmt-list (list idmt)))
-    (send idmt register-parent this)
+  (define-public-state editor-list '())
+  (define/override (add-child editor)
+    (set! editor-list (append editor-list (list editor)))
+    (send editor register-parent this)
     (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
     (send this resize w h)
-    (send this set-count (length idmt-list)))
-  (define/override (remove-child idmt)
-    (when (empty? idmt-list)
-      (error 'remove-idmt "List widget already emtpy"))
-    (send idmt register-parent #f)
-    (set! idmt-list (take idmt-list (sub1 (length idmt-list))))
+    (send this set-count (length editor-list)))
+  (define/override (remove-child editor)
+    (when (empty? editor-list)
+      (error 'remove-editor "List widget already emtpy"))
+    (send editor register-parent #f)
+    (set! editor-list (take editor-list (sub1 (length editor-list))))
     (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
     (send this resize w h)
-    (send this set-count (length idmt-list)))
+    (send this set-count (length editor-list)))
   (define/public (get-child-extents sx sy)
-    (match-define-values (_ _ l t r b) (super get-extent sx sy))
+    (define-values (w h l t r b) (super get-extent sx sy))
     (for/fold ([res '()]
+               [w (- w l r)]
+               [h (- h t b)]
                [x (+ l sx)]
                [y (+ t sy)]
                #:result (values (reverse res)
-                                (- (+ x r) sx)
-                                (- (+ y b) sy)
+                                (+ w l r)
+                                (+ h t b)
                                 l t r b))
-              ([i (in-list idmt-list)])
+              ([i (in-list editor-list)])
       (define-values (w h l t r b)
         (send i get-extent x y))
       (values (cons (list w h l t r b) res)
               (x-extent x w)
-              (y-extent y h))))
+              (y-extent y h)
+              (x-draw x w)
+              (y-draw y h))))
   (define/public (draw-child dc x y)
     (match-define-values (extents _ _ l t r b) (get-child-extents x y))
     (for/fold ([x (+ l x)]
                [y (+ t y)])
-              ([i (in-list idmt-list)]
+              ([i (in-list editor-list)]
                [e (in-list extents)])
       (define w (first e))
       (define h (second e))
@@ -446,17 +450,17 @@
     (void))
   (define/override (on-event event)
     (super on-event event)
-    (for/list ([i (in-list idmt-list)])
+    (for/list ([i (in-list editor-list)])
       (send i on-event event)))
   (define/override (on-goodbye-event event)
     (super on-goodbye-event event)
-    (for/list ([i (in-list idmt-list)])
+    (for/list ([i (in-list editor-list)])
       (send i on-goodbye-event event))))
 
-(define-idmt vertical-block$ (list-block$$ widget$)
+(define-editor vertical-block$ (list-block$$ widget$)
   (super-new [x-extent max]
              [y-extent +]
-             [x-draw (λ _ 0)]
+             [x-draw (λ (acc new) acc)]
              [y-draw +])
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
@@ -466,9 +470,11 @@
     (super draw dc x y)
     (send this draw-child dc x y)))
 
-(define-idmt horizontal-block$ (list-block$$ widget$)
-  (super-new [x-append +]
-             [y-append max])
+(define-editor horizontal-block$ (list-block$$ widget$)
+  (super-new [x-extent +]
+             [y-extent max]
+             [x-draw +]
+             [y-draw (λ (acc new) acc)])
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
@@ -477,7 +483,7 @@
     (super draw dc x y)
     (send this draw-child dc x y)))
 
-(define-idmt-mixin text$$
+(define-editor-mixin text$$
   (super-new)
   (init [(internal-font font) normal-control-font])
   (define-state text "")
@@ -506,6 +512,12 @@
     (send this resize-content text-width text-height))
   (define/public (get-text t)
     text)
+  (define/override (get-extent x y)
+    (super get-extent x y)
+    (define-values (l t r b) (send this get-margin))
+    (define-values (w h a d)
+      (send text-size-dc get-text-extent text (send this get-font)))
+    (values (+ w l r) (+ h t b) l t r b))
   (define/override (draw dc x y)
     (super draw dc x y)
     (define-values (l t r b) (send this get-margin))
@@ -515,12 +527,12 @@
     (send dc set-font old-font))
   (set-font internal-font))
 
-(define-idmt label$ (text$$ widget$)
+(define-editor label$ (text$$ widget$)
   (super-new)
   (init [(internal-text text) ""])
   (send this set-text internal-text))
 
-(define-idmt-mixin padding$$
+(define-editor-mixin padding$$
   (super-new)
   (define-state left-padding 1)
   (define-state top-padding 1)
@@ -546,7 +558,7 @@
          (set! bottom-padding b)
          (super resize-content (+ content-width l r) (+ content-height t b)))))
 
-(define-idmt button$ (signaler$$ (padding$$ widget$))
+(define-editor button$ (signaler$$ (padding$$ widget$))
   (super-new)
   (init [(internal-label label) (new label$)])
   (define mouse-state 'up)
@@ -558,15 +570,13 @@
     (super on-event event)
     (cond
       [(is-a? event mouse-event%)
-       (define-values (x y w h)
-         (send this get-current-extent))
-       (define x-max (+ x w))
-       (define y-max (+ y h))
+       (define-values (w h l t r b)
+         (send this get-extent 0 0))
        (define mouse-x (send event get-x))
        (define mouse-y (send event get-y))
        (define in-button?
-         (and (<= x mouse-x x-max)
-              (<= y mouse-y y-max)))
+         (and (<= l mouse-x r)
+              (<= t mouse-y b)))
        (match (send event get-event-type)
          ['left-down
           (when (and in-button? (eq? mouse-state 'hover))
@@ -609,13 +619,13 @@
     (send dc set-pen old-pen)
     (send dc set-brush old-brush)))
 
-(define-idmt toggle$ widget$
+(define-editor toggle$ widget$
   (super-new))
 
-(define-idmt radio$ (list-block$$ widget$)
+(define-editor radio$ (list-block$$ widget$)
   (super-new))
 
-(define-idmt-mixin focus$$
+(define-editor-mixin focus$$
   (super-new)
   (define-state focus? #f)
   (define mouse-state 'up)
@@ -625,15 +635,13 @@
     (super on-event event)
     (cond
       [(is-a? event mouse-event%)
-       (define-values (x y w h)
-         (send this get-current-extent))
-       (define x-max (+ x w))
-       (define y-max (+ y h))
+       (define-values (w h l t r b)
+         (send this get-extent 0 0))
        (define mouse-x (send event get-x))
        (define mouse-y (send event get-y))
        (define in-button?
-         (and (<= x mouse-x x-max)
-              (<= y mouse-y y-max)))
+         (and (<= l mouse-x r)
+              (<= t mouse-y b)))
        (match (send event get-event-type)
          ['left-down
           (if (and in-button? (eq? mouse-state 'hover))
@@ -656,7 +664,7 @@
                (set! mouse-state 'up))])]
          [_ (void)])])))
 
-(define-idmt field$ (focus$$ (text$$ widget$))
+(define-editor field$ (focus$$ (text$$ widget$))
   (super-new)
   (send this set-background "white")
   (define-state caret 0)
