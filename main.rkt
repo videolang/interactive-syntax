@@ -199,6 +199,7 @@
    merge
    on-event
    on-goodbye-event
+   set-context
    get-context
    register-context))
 
@@ -276,6 +277,8 @@
     (void))
   (define/public (on-goodbye-event event)
     (void))
+  (define/public (set-context c)
+    (set! context c))
   (define/public (get-context)
     context)
   (define/public (register-context ctx)
@@ -372,7 +375,9 @@
     (set! content-height h)
     (define c (send this get-context))
     (when c
-      (send c resized)))
+      (send c resized))
+    (when parent
+      (send parent resized-child this)))
   (define/override (get-extent x y)
     (values (+ content-width left-margin right-margin)
             (+ content-height top-margin bottom-margin)
@@ -389,6 +394,8 @@
     (error 'add-child "editor does not have children"))
   (define/public (remove-child child)
     (error 'remove-child "editor does not have children"))
+  (define/public (resized-child child)
+    (error 'resized-child "editor does not have children"))
   (when internal-parent
     (register-parent internal-parent)
     (send parent add-child this)))
@@ -408,14 +415,14 @@
   (define/override (add-child editor)
     (set! editor-list (append editor-list (list editor)))
     (send editor register-parent this)
-    (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
-    (send this resize w h)
-    (send this set-count (length editor-list)))
+    (resized-child editor))
   (define/override (remove-child editor)
     (when (empty? editor-list)
       (error 'remove-editor "List widget already emtpy"))
     (send editor register-parent #f)
     (set! editor-list (take editor-list (sub1 (length editor-list))))
+    (resized-child editor))
+  (define/override (resized-child child)
     (match-define-values (_ w h _ _ _ _) (get-child-extents 0 0))
     (send this resize w h)
     (send this set-count (length editor-list)))
