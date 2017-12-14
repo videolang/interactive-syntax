@@ -406,12 +406,12 @@
         [(iye y-extent)]
         [(ixd x-draw)]
         [(iyd y-draw)])
-  (super-new)
   (define x-extent ixe)
   (define y-extent iye)
   (define x-draw ixd)
   (define y-draw iyd)
   (define-public-state editor-list '())
+  (super-new)
   (define/override (add-child editor)
     (set! editor-list (append editor-list (list editor)))
     (send editor register-parent this)

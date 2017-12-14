@@ -7,25 +7,24 @@
 
 (require "main.rkt")
 
-(define idmt (new horizontal-block$))
-;(define idmt (new vertical-block$))
-(define list-a (new vertical-block$))
-(send idmt add-child list-a)
-(send list-a add-child (new label$ [text "Button A"]))
-(define btn-a (new button$ [label (new label$ [text "Click"])]))
-(send list-a add-child btn-a)
-(define list-b (new vertical-block$))
-(send idmt add-child list-b)
-(send list-b add-child (new label$ [text "Button B"]))
-(send list-b add-child (new button$ [label (new label$ [text "ME!!!!"])]))
-(send list-b add-child (new label$ [text "^^ The Cool Button ^^"]))
+(define m (new horizontal-block$))
 
-(log-editor-debug "")
+(define list-a (new vertical-block$ [parent m]))
+(new label$ [parent list-a]
+     [text "Button A"])
+(new button$ [parent list-a]
+     [label (new label$ [text "Click"])])
+
+(define list-b (new vertical-block$ [parent m]))
+(new label$ [parent list-b]
+     [text "Button B"])
+(new button$ [parent list-b]
+     [label (new label$ [text "ME!!!!"])])
+(new label$ [parent list-b]
+     [text "^^ The Cool Button ^^"])
 
 (define f (new frame% [label "IDMT"]))
 (new editor-canvas%
      [parent f]
-     [editor idmt])
+     [editor m])
 (send f show #t)
-
-(displayln "End of Line")
