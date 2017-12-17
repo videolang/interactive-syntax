@@ -7,11 +7,12 @@
 
 (require "main.rkt")
 
-(define m (new button$ [label (new label$ [text "Click Me Please"])]))
+(define m (new vertical-block$))
+(new label$ [parent m]
+     [text "Hello World!"])
+(new field$ [parent m])
 
-(log-editor-debug "")
-
-(define f (new frame% [label "IDMT"]))
+(define f (new frame% [label "An Editor"]))
 (new editor-canvas%
      [parent f]
      [editor m])

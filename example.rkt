@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require racket/class
-         racket/gui/base
+         (only-in racket/gui/base frame%)
          racket/serialize
          racket/pretty)
 
@@ -9,12 +9,12 @@
 
 (define idmt (new vertical-block$))
 (define counter 0)
-(define-idmt add-item$ (receiver$$ base$)
+(define-editor add-item$ (receiver$$ base$)
   (super-new)
   (define/override (on-receive event)
     (send idmt add-idmt (new label$ [text (format "Item: ~a" counter)]))
     (set! counter (add1 counter))))
-(define-idmt save$ (receiver$$ widget$)
+(define-editor save$ (receiver$$ widget$)
   (super-new)
   (define/override (on-receive event)
     (pretty-print (serialize (send this get-parent)))))
