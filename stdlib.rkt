@@ -124,6 +124,23 @@
   (define/public (get-context)
     context))
 
+(define-editor scroller$ base$
+  (super-new)
+  (init [(ic content)])
+  (define-state content #f)
+  (define-state content-height 0)
+  (define-state content-width 0)
+  (define-state vertical-scrollbar-width 0)
+  (define-state horizontal-scrollbar-height 0)
+  (define/override (get-extent x y)
+    (values (+ content-width vertical-scrollbar-width)
+            (+ content-height horizontal-scrollbar-height)
+            0
+            0
+            vertical-scrollbar-width
+            horizontal-scrollbar-height))
+  (define-state child #f))
+
 (define-editor-mixin receiver$$
   (super-new)
   (define/public (on-receive event)
@@ -258,8 +275,9 @@
 
 (define stretchable<$>
   (interface ()
-    (get-max-extent (->m (values real? real?)))
-    (draw-stretched (->m real? real? real? real? any))))
+    (get-min-extent (->m real? real? (values real? real?)))
+    (get-max-extent (->m real? real? (values real? real?)))
+    (draw-stretched (->m (is-a?/c dc<%>) real? real? real? real? any))))
 
 (define parent<$>
   (interface ()
@@ -273,15 +291,11 @@
   (init [(ixe x-extent)]
         [(iye y-extent)]
         [(ixd x-draw)]
-        [(iyd y-draw)]
-        [(iwm width-max) #f]
-        [(ihm height-max) #f])
+        [(iyd y-draw)])
   (define x-extent ixe)
   (define y-extent iye)
   (define x-draw ixd)
   (define y-draw iyd)
-  (define width-max iwm)
-  (define height-max ihm)
   (define-public-state editor-list '())
   (super-new)
   (define/public (add-child editor)
@@ -300,7 +314,11 @@
     (match-define-values (_ w h _ _ _ _) (get-child-extents (send this get-x) (send this get-y)))
     (send this resize w h)
     (send this set-count (length editor-list)))
-  (define/public (get-child-extents sx sy)
+  (define/public (get-min-extent x y)
+    (error "TODO"))
+  (define/public (get-max-extent x y)
+    (error "TODO"))
+  (define/public (get-child-extents sx sy #:stretchable? [stretchable? #f])
     (define-values (sw sh l t r b) (super get-extent sx sy))
     (for/fold ([res '()]
                [w 0]
@@ -312,13 +330,23 @@
                                 (max sh (+ h t b))
                                 l t r b))
               ([i (in-list editor-list)])
-      (define-values (w* h* l t r b)
-        (send i get-extent x y))
-      (values (cons (list w* h* l t r b) res)
-              (x-extent w w*)
-              (y-extent h h*)
-              (x-draw x w*)
-              (y-draw y h*))))
+      (cond
+        [(and stretchable? (is-a? i stretchable<$>))
+         (define-values (w* h*)
+           (send (car i) get-max-extent x y))
+         (values (cons (list w* h*) res)
+                 (x-extent w w*)
+                 (y-extent h h*)
+                 (x-draw x w*)
+                 (y-draw y h*))]
+        [else
+         (define-values (w* h* l t r b)
+           (send (car i) get-extent x y))
+         (values (cons (list w* h* l t r b) res)
+                 (x-extent w w*)
+                 (y-extent h h*)
+                 (x-draw x w*)
+                 (y-draw y h*))])))
   (define/public (draw-child dc x y)
     (match-define-values (extents _ _ l t r b) (get-child-extents x y))
     (for/fold ([x (+ l x)]
@@ -327,23 +355,22 @@
                [e (in-list extents)])
       (define w (first e))
       (define h (second e))
-      (send i draw dc x y)
+      (send (car i) draw dc x y)
       (values (x-draw x w)
               (y-draw y h)))
     (void))
+  (define/public (draw-stretched dc x y w h)
+    (send this draw dc x y))
   (define/override (on-event event)
     (super on-event event)
     (for/list ([i (in-list editor-list)])
-      (send i on-event event)))
-  (define/override (draw-scaled dc x y w h)
-    (error "TODO")))
+      (send (car i) on-event event))))
 
 (define-editor vertical-block$ (list-block$$ widget$)
   (super-new [x-extent max]
              [y-extent +]
              [x-draw (λ (acc new) acc)]
-             [y-draw +]
-             [width-max +inf.0])
+             [y-draw +])
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
@@ -357,8 +384,7 @@
   (super-new [x-extent +]
              [y-extent max]
              [x-draw +]
-             [y-draw (λ (acc new) acc)]
-             [height-max +inf.0])
+             [y-draw (λ (acc new) acc)])
   (define/override (get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
@@ -528,9 +554,19 @@
   #:interfaces (stretchable<$>)
   (super-new)
   (send this set-background "white")
+  (define/public (get-max-extent x y)
+    (match-define-values (w h _ _ _ _)
+      (send this get-extent x y))
+    (values +inf.0 h))
+  (define/public (get-min-extent x y)
+    (match-define-values (w h _ _ _ _)
+      (send this get-extent x y))
+    (values 0 h))
   (define-state caret 0)
   (define/override (draw dc x y)
     (super draw dc x y))
+  (define/public (draw-stretched dc x y w h)
+    (draw dc x y))
   (define/override (on-event event)
     (super on-event event)
     (define text (send this get-text))
