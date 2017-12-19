@@ -209,14 +209,15 @@
         [(is-a? c color%)
          (list (send c red) (send c green) (send c blue) (send c alpha))]
         [else c]))
-    (cond
-      [(is-a? brush/color brush%)
-       (list (color->quad (send brush/color get-color))
-             (send brush/color get-style)
-             (send brush/color get-stipple)
-             #f ;(send brush/color get-gradient)
-             (send brush/color get-transformation))]
-      [else (list (color->quad brush/color) (or style 'solid) #f #f #f)]))
+    (set! background
+          (cond
+            [(is-a? brush/color brush%)
+             (list (color->quad (send brush/color get-color))
+                   (send brush/color get-style)
+                   (send brush/color get-stipple)
+                   #f ;(send brush/color get-gradient)
+                   (send brush/color get-transformation))]
+            [else (list (color->quad brush/color) (or style 'solid) #f #f #f)])))
   (define-state parent #f)
   (define-state count 1)
   (define/override (get-count)
@@ -427,7 +428,7 @@
   (define/public (get-text)
     text)
   (define/override (draw dc x y)
-    ;(super draw dc x y)
+    (super draw dc x y)
     (define-values (l t r b) (send this get-margin))
     (define old-font (send dc get-font))
     (send dc set-font (send this get-font))
