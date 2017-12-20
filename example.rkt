@@ -38,8 +38,8 @@ idmt
      [receiver (new save$ [parent idmt])])
 ;(serialize idmt)
 ;(deserialize (serialize idmt))
-;(new idmt-snip%
-;     [idmt idmt])
+(new editor-snip%
+     [editor idmt])
 
 (define f (new frame% [label "IDMT"]))
 (new editor-canvas%

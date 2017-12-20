@@ -59,6 +59,8 @@
       (send editor get-extent 0 0))
     (super-new [min-width (exact-ceiling width)]
                [min-height (exact-ceiling height)]
+               [stretchable-width #f]
+               [stretchable-height #f]
                [paint-callback (λ (c dc)
                                  (send editor draw dc 0 0)
                                  (match-define-values (width height _ _ _ _)
@@ -78,15 +80,17 @@
     (init-field editor)
     (super-new)
     (set-flags (cons 'handles-events (get-flags)))
-    (define (get-size)
-      (send editor get-min-extent))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
-      (define-values (w* h*) (get-size))
-      (when w (set-box! w w*))
-      (when h (set-box! h h*)))
+      (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
+      (define (wsb! x y) (when x (set-box! x y)))
+      (wsb! w w*)
+      (wsb! h h*)
+      (wsb! ls l*)
+      (wsb! s t*)
+      (wsb! rs r*)
+      (wsb! d b*))
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
-      (define-values (w h) (get-size))
-      (send editor draw dc x y w h))
+      (send editor draw dc x y))
     (define/override (on-event dc x y ex ey event)
       (send editor on-mouse-event event))
     (define/override (copy)
@@ -141,7 +145,13 @@
             horizontal-scrollbar-height))
   (define-state child #f))
 
+(define receiver<$>
+  (interface ()
+    on-receive
+    signal))
+
 (define-editor-mixin receiver$$
+  #:interfaces (receiver<$>)
   (super-new)
   (define/public (on-receive event)
     (void))
@@ -160,7 +170,7 @@
   (define/public (unregister-receiver x)
     (set-remove! receivers x))
   (cond
-    [(is-a? ir receiver$$)
+    [(is-a? ir receiver<$>)
      (register-receiver ir)]
     [(list? ir)
      (for ([i (in-list ir)])
@@ -477,7 +487,7 @@
 
 (define-editor button$ (signaler$$ (padding$$ widget$))
   (super-new)
-  (init [(internal-label label) #f])
+  (init [(il label) #f])
   (define mouse-state 'up)
   (define-state label #f)
   (define-state up-color "Silver")
@@ -535,7 +545,8 @@
     (send label draw dc (+ mx pl) (+ my pt))
     (send dc set-pen old-pen)
     (send dc set-brush old-brush))
-  (set-label internal-label))
+  (when il
+    (set-label il)))
 
 (define-editor toggle$ widget$
   (super-new))
