@@ -150,14 +150,21 @@
 
 (define-editor-mixin signaler$$
   (super-new)
-  (define-public-state receivers (mutable-set))
+  (init [(ir receiver) '()])
+  (define-state receivers (mutable-set))
   (define/public (signal event)
     (for ([r (in-set receivers)])
       (send r signal event)))
   (define/public (register-receiver x)
     (set-add! receivers x))
   (define/public (unregister-receiver x)
-    (set-remove! receivers x)))
+    (set-remove! receivers x))
+  (cond
+    [(is-a? ir receiver$$)
+     (register-receiver ir)]
+    [(list? ir)
+     (for ([i (in-list ir)])
+       (register-receiver i))]))
 
 (define-editor tool-tip$ base$
   (super-new))

@@ -12,7 +12,7 @@
 (define-editor add-item$ (receiver$$ base$)
   (super-new)
   (define/override (on-receive event)
-    (send idmt add-idmt (new label$ [text (format "Item: ~a" counter)]))
+    (send idmt add-child (new label$ [text (format "Item: ~a" counter)]))
     (set! counter (add1 counter))))
 (define-editor save$ (receiver$$ widget$)
   (super-new)
@@ -29,24 +29,20 @@
      [text "I am an IDMT!!!"])
 idmt
 
-(define f (new frame% [label "IDMT"]))
-(new idmt-canvas%
-     [parent f]
-     [idmt idmt])
-(send f show #t)
-
-#|
-(define btn (new button$ [label (new label$ [text "CLICK ME!"])]))
-(send btn register-receiver (new add-item$))
-(send idmt add-idmt btn)
-(send idmt add-idmt (new field$))
-(define btn2 (new button$ [label (new label$ [text "SAVE"])]))
-(define save (new save$))
-(send btn2 register-receiver save)
-(send save register-parent idmt)
-(send idmt add-idmt btn2)
+(new button$ [parent idmt]
+     [label (new label$ [text "CLICK ME!"])]
+     [receiver (new add-item$)])
+(new field$ [parent idmt])
+(new button$ [parent idmt]
+     [label (new label$ [text "SAVE"])]
+     [receiver (new save$ [parent idmt])])
 ;(serialize idmt)
 ;(deserialize (serialize idmt))
 ;(new idmt-snip%
 ;     [idmt idmt])
-|#
+
+(define f (new frame% [label "IDMT"]))
+(new editor-canvas%
+     [parent f]
+     [editor idmt])
+(send f show #t)
