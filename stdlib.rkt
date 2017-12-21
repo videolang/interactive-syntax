@@ -30,7 +30,7 @@
      (λ (this format default)
        (case format
          [(png-bytes)
-          (define-values (w* h* l t r b) (send this get-extent (send this get-x) (send this get-y)))
+          (define-values (w* h* l t r b) (send this get-extent 0 0))
           (define w (exact-ceiling (max w* 1)))
           (define h (exact-ceiling (max h* 1)))
           (define bit (make-object bitmap% w h))

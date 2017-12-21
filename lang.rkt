@@ -17,7 +17,9 @@
 (begin-for-syntax
   (define-syntax-class defstate
     #:literals (define-state)
-    (pattern (define-state name body ...)))
+    (pattern (define-state name body ...)
+             #:attr getter (format-id this-syntax "get-~a" #'name)
+             #:attr setter (format-id this-syntax "set-~a!" #'name)))
   (define-syntax-class defpubstate
     #:literals (define-public-state)
     (pattern (define-public-state name body ...))))
@@ -53,6 +55,8 @@
      (define serialize-method (gensym 'serialize))
      (define deserialize-method (gensym 'deserialize))
      (define copy-method (gensym 'copy))
+     (define state-methods (for/list ([i (in-list (attribute state.getter))])
+                             (gensym (syntax->datum i))))
      (define base? (syntax-e (attribute b?)))
      #`(begin
          (define-member-name #,serialize-method serial-key)
@@ -76,13 +80,14 @@
          (splicing-syntax-parameterize ([defstate-parameter
                                           (syntax-parser
                                             [(_ st:defstate who)
-                                             #'(define st.name st.body (... ...))]
+                                             #'(begin
+                                                 (define st.name st.body (... ...)))]
                                             [(_ st:defpubstate who)
                                              #'(field [st.name st.body (... ...)])])])
            (define name
              (let ()
-               #,@(for/list ([i (in-list (attribute state.name))])
-                    #`(define-local-member-name #,i))
+               #,@(for/list ([sm (in-list state-methods)])
+                    #`(define-local-member-name #,sm))
                (class/derived
                 orig-stx
                 (name
@@ -123,12 +128,16 @@
                   #,(if base?
                         #`(void)
                         #`(super #,copy-method other))
-                  #,@(for/list ([i (in-list (attribute state.name))])
-                       #`(set! #,i (get-field #,i other)))
+                  #,@(for/list ([i (in-list (attribute state.name))]
+                                [get (in-list state-methods)])
+                       #`(set! #,i (send other #,get)))
                   #,@(for/list ([i (in-list (attribute public-state.name))])
                        #`(set! #,i (get-field #,i other)))
                   (void))
                 (#,(if base? #'public #'override) #,copy-method)
+                #,@(for/list ([i (in-list (attribute state.name))]
+                              [sm (in-list state-methods)])
+                     #`(define/public (#,sm) #,i))
                 body ...)))))]))
 
 (define-syntax (define-base-editor* stx)
