@@ -92,7 +92,10 @@
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
       (send editor draw dc x y))
     (define/override (on-event dc x y ex ey event)
-      (send editor on-mouse-event event))
+      (send editor on-event event)
+      (define admin (send this get-admin))
+      (when admin
+        (send admin resized this #t)))
     (define/override (copy)
       (new editor-snip%
            [editor (send editor copy)]))))
