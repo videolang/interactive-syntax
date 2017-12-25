@@ -46,7 +46,7 @@
    (get-count (->m integer?))
    split
    merge
-   (on-event (->m (is-a?/c event%) any))
+   (on-event (->m (is-a?/c event%) real? real? any))
    (set-context (->m (is-a?/c editor-context<$>) void?))
    (get-context (->m (or/c #f (is-a?/c editor-context<$>))))))
 
@@ -68,10 +68,10 @@
                                  (send this min-width (exact-ceiling width))
                                  (send this min-height (exact-ceiling height)))])
     (define/override (on-event event)
-      (send editor on-event event)
+      (send editor on-event event 0 0)
       (send this refresh))
     (define/override (on-char event)
-      (send editor on-event event)
+      (send editor on-event event 0 0)
       (send this refresh))))
 
 (define editor-snip%
@@ -92,7 +92,8 @@
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
       (send editor draw dc x y))
     (define/override (on-event dc x y ex ey event)
-      (send editor on-event event)
+      (send editor get-extent x y) ;; TODO, remove this
+      (send editor on-event event x y)
       (define admin (send this get-admin))
       (when admin
         (send admin resized this #t)))
@@ -124,7 +125,7 @@
     (error 'split "TODO"))
   (define/public (merge . args)
     (error 'merge "TODO"))
-  (define/public (on-event event)
+  (define/public (on-event event x y)
     (void))
   (define/public (set-context c)
     (set! context c))
@@ -382,10 +383,10 @@
     (void))
   (define/public (draw-stretched dc x y w h)
     (send this draw dc x y))
-  (define/override (on-event event)
-    (super on-event event)
+  (define/override (on-event event x y)
+    (super on-event event x y)
     (for/list ([i (in-list editor-list)])
-      (send (car i) on-event event))))
+      (send (car i) on-event event 0 0))))
 
 (define-editor vertical-block$ (list-block$$ widget$)
   (super-new [x-extent max]
@@ -393,6 +394,7 @@
              [x-draw (λ (acc new) acc)]
              [y-draw +])
   (define/override (get-extent x y)
+    (super get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
     (log-editor-debug "Vertical Extent: ~a" (list x y extents w h))
@@ -407,6 +409,7 @@
              [x-draw +]
              [y-draw (λ (acc new) acc)])
   (define/override (get-extent x y)
+    (super get-extent x y)
     (define-values (extents w h l t r b)
       (send this get-child-extents x y))
     (log-editor-debug "Horizontal Extent: ~a" (list x y extents w h))
@@ -496,8 +499,8 @@
   (define-state up-color "Silver")
   (define-state hover-color "DarkGray")
   (define-state down-color "DimGray")
-  (define/override (on-event event)
-    (super on-event event)
+  (define/override (on-event event x y)
+    (super on-event event x y)
     (cond
       [(is-a? event mouse-event%)
        (define in-button?
@@ -563,8 +566,8 @@
   (define mouse-state 'up)
   (define/public (has-focus?)
     focus?)
-  (define/override (on-event event)
-    (super on-event event)
+  (define/override (on-event event x y)
+    (super on-event event x y)
     (cond
       [(is-a? event mouse-event%)
        (define in-button? (send this in-bounds? event))
@@ -598,8 +601,8 @@
       (send dc draw-line (+ pr cx) (+ y pt) (+ pr cx) (+ y h))))
   (define/public (draw-stretched dc x y w h)
     (draw dc x y))
-  (define/override (on-event event)
-    (super on-event event)
+  (define/override (on-event event x y)
+    (super on-event event x y)
     (define text (send this get-text))
     (cond
       [(is-a? event key-event%)

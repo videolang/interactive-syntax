@@ -41,8 +41,10 @@ idmt
 (new editor-snip%
      [editor idmt])
 
+#|
 (define f (new frame% [label "IDMT"]))
 (new editor-canvas%
      [parent f]
      [editor idmt])
 (send f show #t)
+|#
