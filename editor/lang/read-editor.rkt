@@ -1,6 +1,10 @@
-#lang at-exp scratch
+#lang racket/base
 
 (provide (all-defined-out))
+
+(require racket/port
+         racket/list
+         syntax/readerr)
 
 (define (make-editor-readtable #:readtable [base-readtable (current-readtable)])
   (define read-editor
@@ -8,6 +12,7 @@
       [(ch port)
        (define next (peek-bytes 5 0 port))
        (cond [(equal? next #"ditor")
+              (read-bytes 5 port)
               (read/recursive port)]
              [else
               (define-values (in out) (make-pipe))
@@ -17,12 +22,24 @@
       [(ch port src line col pos)
        (define next (peek-bytes 5 0 port))
        (cond [(equal? next #"ditor")
+              (read-bytes 5 port)
               (read-syntax/recursive src port)]
              [else
               (define-values (in out) (make-pipe))
               (write-bytes #"#e" out)
               (close-output-port out)
-              (read-syntax/recursive src (input-port-append #f in port) #f base-readtable)])]))
+              (port-count-lines! in)
+              (set-port-next-location! in line col pos)
+              (with-handlers ([exn:fail:read?
+                               (λ (e)
+                                 (raise-read-error
+                                  "bad syntax"
+                                  src
+                                  line
+                                  col
+                                  pos
+                                  (srcloc-span (first (exn:fail:read-srclocs e)))))])
+                (read-syntax/recursive src (input-port-append #f in port) #f base-readtable))])]))
   (make-readtable base-readtable
                   #\e
                   'dispatch-macro
