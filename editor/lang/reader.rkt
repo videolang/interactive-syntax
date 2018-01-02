@@ -8,10 +8,9 @@ editor
            [(color-lexer) (λ (in)
                             (define-values (text type paren start end)
                               (racket-lexer in))
-                            (define next (peek-char in))
                             (cond
                               [(and (equal? text "#editor")
-                                    (not (or (eof-object? next) (char-whitespace? next))))
+                                    (paren-char? (peek-char in)))
                                (values text 'parenthesis paren start end)]
                               [else
                                (values text type paren start end)]))]

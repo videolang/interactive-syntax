@@ -5,7 +5,14 @@
 (require racket/serialize
          racket/port
          racket/list
-         syntax/readerr)
+         syntax/srcloc
+         syntax/readerr
+         (for-template "../lang.rkt"))
+
+(define (paren-char? par)
+  (case par
+    [(#\( #\[ #\{) #t]
+    [else #f]))
 
 (define (make-editor-readtable #:readtable [base-readtable (current-readtable)])
   (define read-editor
@@ -13,11 +20,17 @@
       (define next (peek-bytes 5 0 port))
       (cond [(equal? next #"ditor")
              (read-bytes 5 port)
+             (define span 8)
              (define next (peek-char port))
-             (when (or (eof-object? next) (char-whitespace? next))
-               (raise-read-error "bad syntax" src line col pos 8))
+             (unless (paren-char? (peek-char port))
+               (raise-read-error "bad syntax" src line col pos span))
+             (define the-elaborator (read-syntax/recursive src port))
+             (unless (paren-char? (peek-char port))
+               (raise-read-error "bad syntax" src line col pos span))
              (define the-editor (read-syntax/recursive src port))
-             the-editor]
+             (define stx (build-source-location-syntax (make-srcloc src line col pos span)))
+             (quasisyntax/loc stx
+               (#%editor #,the-elaborator #,the-editor))]
             [else
              (define-values (in out) (make-pipe))
              (write-bytes #"#e" out)

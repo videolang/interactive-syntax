@@ -9,7 +9,15 @@
          (for-syntax racket/base
                      racket/syntax
                      syntax/parse
-                     syntax/parse/lib/function-header))
+                     syntax/parse/lib/function-header
+                     racket/serialize))
+
+;; Only introduced by #editor reader macro. Handles deserializing
+;;  the editor.
+(define-syntax (#%editor stx)
+  (syntax-parse stx
+    [(_ elaborator body)
+     #'(elaborator body)]))
 
 (define serial-key (generate-member-key))
 (define deserial-key (generate-member-key))
@@ -18,7 +26,7 @@
 (begin-for-syntax
   (define-syntax-class defelaborate
     #:literals (define-elaborate)
-    (pattern (define-elaborate expr)))
+    (pattern (define-elaborate data body ...+)))
   (define-syntax-class defstate
     #:literals (define-state)
     (pattern (define-state name body ...)
@@ -61,7 +69,9 @@
         (~and
          (~seq (~or state:defstate
                     public-state:defpubstate
-                    (~optional elaborator:defelaborate)
+                    (~optional elaborator:defelaborate
+                               #:defaults ([elaborator.data #'this]
+                                           [(elaborator.body 1) (list #'#'this)]))
                     internal-body) ...)
          (~seq body ...)))
      #:with name-deserialize (format-id stx "~a:deserialize" #'name)
@@ -94,7 +104,10 @@
                                 (λ (other)
                                   (send pattern #,copy-method other)))))))
                 '())
-         ;(define-syntax elaborator.name elaborator.expr)
+         (define-syntax (elaborator.name stx)
+           (syntax-parse stx
+             [(_ elaborator.data)
+              elaborator.body ...]))
          (splicing-syntax-parameterize ([defstate-parameter
                                           (syntax-parser
                                             [(_ st:defstate who)
