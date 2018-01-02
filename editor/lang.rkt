@@ -48,6 +48,10 @@
     [x:defpubstate
      #`(defstate-parameter #,stx define-public-state)]))
 
+;; Each editor definition has three parts:
+;; 1. A phase 1 elaboration
+;; 2. A submodule with interaction code
+;; 3. A deserializer submodule
 (define-syntax (~define-editor stx)
   (syntax-parse stx
     [(_ orig-stx name:id supclss (interfaces ...)
