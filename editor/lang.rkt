@@ -12,6 +12,31 @@
                      syntax/parse/lib/function-header
                      racket/serialize))
 
+;; Creates a box for storing submodule syntax pieces.
+;; Note that this box is newly instantiated for every module
+;; that defines new editor types.
+(define-for-syntax editor-submod-box (box '()))
+(define-for-syntax (add-syntax-to-editor! stx)
+  (define existing (unbox editor-submod-box))
+  (when (null? existing)
+    (syntax-local-lift-module-end-declaration
+     #'(define-editor-submodule)))
+  (set-box! editor-submod-box (append (reverse (syntax->list stx)) existing)))
+
+(define-syntax (editor-submod stx)
+  (syntax-parse stx
+    [(_ body ...)
+     (add-syntax-to-editor! (syntax-local-introduce #'(body ...)))
+     #'(begin)]))
+
+(define-syntax (define-editor-submodule stx)
+  (syntax-parse stx
+    [(_)
+     #`(module* editor #f
+         #,@(map syntax-local-introduce (reverse (unbox editor-submod-box))))]))
+
+;; ===================================================================================================
+
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
 (define-syntax (#%editor stx)
@@ -75,7 +100,6 @@
                     internal-body) ...)
          (~seq body ...)))
      #:with name-deserialize (format-id stx "~a:deserialize" #'name)
-     #:with editor-submod (format-id stx "editor-info")
      (define dd?* (syntax-e #'dd?))
      (unless (or (not dd?*) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
@@ -86,7 +110,12 @@
                              (gensym (syntax->datum i))))
      (define base? (syntax-e (attribute b?)))
      #`(begin
-         (define-member-name #,serialize-method serial-key)
+         (define-syntax (elaborator.name stx)
+           (syntax-parse stx
+             [(_ elaborator.data)
+              elaborator.body ...]))
+         (editor-submod
+                   (define-member-name #,serialize-method serial-key)
          (define-member-name #,deserialize-method deserial-key)
          (define-member-name #,copy-method copy-key)
          #,@(if dd?*
@@ -104,74 +133,68 @@
                                 (λ (other)
                                   (send pattern #,copy-method other)))))))
                 '())
-         (define-syntax (elaborator.name stx)
-           (syntax-parse stx
-             [(_ elaborator.data)
-              elaborator.body ...]))
-         (splicing-syntax-parameterize ([defstate-parameter
-                                          (syntax-parser
-                                            [(_ st:defstate who)
-                                             #'(begin
-                                                 (define st.name st.body (... ...)))]
-                                            [(_ st:defpubstate who)
-                                             #'(field [st.name st.body (... ...)])])])
-           ;(module+ editor-submod
-             (define name
-               (let ()
-                 #,@(for/list ([sm (in-list state-methods)])
-                      #`(define-local-member-name #,sm))
-                 (class/derived
-                  orig-stx
-                  (name
-                   supclss
-                   ((interface* () ([prop:serializable
-                                     (make-serialize-info
-                                      (λ (this)
-                                        (send this #,serialize-method))
-                                      #'name-deserialize
-                                      #t
-                                      (or (current-load-relative-directory) (current-directory)))]))
-                    interfaces ...)
-                   #f)
-                  (define (#,serialize-method)
-                    (vector #,(if base?
-                                  #'#f
-                                  #`(super #,serialize-method))
-                            (make-immutable-hash
-                             `#,(for/list ([i (in-list (attribute state.name))])
-                                  #`(#,(syntax->datum i) . ,#,i)))
-                            (make-immutable-hash
-                             `#,(for/list ([i (in-list (attribute public-state.name))])
-                                  #`(#,(syntax->datum i) . ,#,i)))))
-                  (#,(if base? #'public #'override) #,serialize-method)
-                  (define (#,deserialize-method data)
-                    (define sup (vector-ref data 0))
-                    (define table (vector-ref data 1))
-                    (define public-table (vector-ref data 2))
-                    #,(if base?
-                          #`(void)
-                          #`(super #,deserialize-method sup))
-                    #,@(for/list ([i (in-list (attribute state.name))])
-                         #`(set! #,i (hash-ref table '#,(syntax->datum i))))
-                    #,@(for/list ([i (in-list (attribute public-state.name))])
-                         #`(set! #,i (hash-ref public-table '#,(syntax->datum i)))))
-                  (#,(if base? #'public #'override) #,deserialize-method)
-                  (define (#,copy-method other)
-                    #,(if base?
-                          #`(void)
-                          #`(super #,copy-method other))
-                    #,@(for/list ([i (in-list (attribute state.name))]
-                                  [get (in-list state-methods)])
-                         #`(set! #,i (send other #,get)))
-                    #,@(for/list ([i (in-list (attribute public-state.name))])
-                         #`(set! #,i (get-field #,i other)))
-                    (void))
-                  (#,(if base? #'public #'override) #,copy-method)
-                  #,@(for/list ([i (in-list (attribute state.name))]
-                                [sm (in-list state-methods)])
-                       #`(define/public (#,sm) #,i))
-                  body ...)))));)
-     ]))
+          (splicing-syntax-parameterize ([defstate-parameter
+                                           (syntax-parser
+                                             [(_ st:defstate who)
+                                              #'(begin
+                                                  (define st.name st.body (... ...)))]
+                                             [(_ st:defpubstate who)
+                                              #'(field [st.name st.body (... ...)])])])
+            (define name
+              (let ()
+                #,@(for/list ([sm (in-list state-methods)])
+                     #`(define-local-member-name #,sm))
+                (class/derived
+                 orig-stx
+                 (name
+                  supclss
+                  ((interface* () ([prop:serializable
+                                    (make-serialize-info
+                                     (λ (this)
+                                       (send this #,serialize-method))
+                                     #'name-deserialize
+                                     #t
+                                     (or (current-load-relative-directory) (current-directory)))]))
+                   interfaces ...)
+                  #f)
+                 (define (#,serialize-method)
+                   (vector #,(if base?
+                                 #'#f
+                                 #`(super #,serialize-method))
+                           (make-immutable-hash
+                            `#,(for/list ([i (in-list (attribute state.name))])
+                                 #`(#,(syntax->datum i) . ,#,i)))
+                           (make-immutable-hash
+                            `#,(for/list ([i (in-list (attribute public-state.name))])
+                                 #`(#,(syntax->datum i) . ,#,i)))))
+                 (#,(if base? #'public #'override) #,serialize-method)
+                 (define (#,deserialize-method data)
+                   (define sup (vector-ref data 0))
+                   (define table (vector-ref data 1))
+                   (define public-table (vector-ref data 2))
+                   #,(if base?
+                         #`(void)
+                         #`(super #,deserialize-method sup))
+                   #,@(for/list ([i (in-list (attribute state.name))])
+                        #`(set! #,i (hash-ref table '#,(syntax->datum i))))
+                   #,@(for/list ([i (in-list (attribute public-state.name))])
+                        #`(set! #,i (hash-ref public-table '#,(syntax->datum i)))))
+                 (#,(if base? #'public #'override) #,deserialize-method)
+                 (define (#,copy-method other)
+                   #,(if base?
+                         #`(void)
+                         #`(super #,copy-method other))
+                   #,@(for/list ([i (in-list (attribute state.name))]
+                                 [get (in-list state-methods)])
+                        #`(set! #,i (send other #,get)))
+                   #,@(for/list ([i (in-list (attribute public-state.name))])
+                        #`(set! #,i (get-field #,i other)))
+                   (void))
+                 (#,(if base? #'public #'override) #,copy-method)
+                 #,@(for/list ([i (in-list (attribute state.name))]
+                               [sm (in-list state-methods)])
+                      #`(define/public (#,sm) #,i))
+                 body ...))))))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
