@@ -114,25 +114,26 @@
            (syntax-parse stx
              [(_ elaborator.data)
               elaborator.body ...]))
-         (editor-submod
-                   (define-member-name #,serialize-method serial-key)
-         (define-member-name #,deserialize-method deserial-key)
-         (define-member-name #,copy-method copy-key)
-         #,@(if dd?*
-                (list
-                 #`(provide name-deserialize)
-                 #`(define name-deserialize
-                     (make-deserialize-info
-                      (λ (sup table public-table)
-                        (define this (new name))
-                        (send this #,deserialize-method (vector sup table public-table))
-                        this)
-                      (λ ()
-                        (define pattern (new name))
-                        (values pattern
-                                (λ (other)
-                                  (send pattern #,copy-method other)))))))
-                '())
+         (#,(if dd?* #'editor-submod #'begin)
+          (define-member-name #,serialize-method serial-key)
+          (define-member-name #,deserialize-method deserial-key)
+          (define-member-name #,copy-method copy-key)
+          #,@(if dd?*
+                 (list
+                  #`(provide name-deserialize)
+                  #'(provide name)
+                  #`(define name-deserialize
+                      (make-deserialize-info
+                       (λ (sup table public-table)
+                         (define this (new name))
+                         (send this #,deserialize-method (vector sup table public-table))
+                         this)
+                       (λ ()
+                         (define pattern (new name))
+                         (values pattern
+                                 (λ (other)
+                                   (send pattern #,copy-method other)))))))
+                 '())
           (splicing-syntax-parameterize ([defstate-parameter
                                            (syntax-parser
                                              [(_ st:defstate who)
@@ -209,6 +210,8 @@
         body ...)
      #`(~define-editor #,stx name super (interfaces ...) body ...)]))
 
+;; Mixin-editors are not at module level, and thus are not
+;; implicetly provided by the ~define-editor helper macro.
 (define-syntax (define-editor-mixin stx)
   (syntax-parse stx
     [(_ name:id
@@ -217,13 +220,15 @@
         ...
         body ...)
      #`(begin
-         (define (name $)
-           (~define-editor #,stx
-                           name
-                           ((compose #,@(reverse (attribute mixins))) $)
-                           (interfaces ...)
-                           #:direct-deserialize? #f
-                           body ...)
-           name))]))
+         (editor-submod
+          (provide name)
+          (define (name $)
+            (~define-editor #,stx
+                            name
+                            ((compose #,@(reverse (attribute mixins))) $)
+                            (interfaces ...)
+                            #:direct-deserialize? #f
+                            body ...)
+            name)))]))
 
 (define-logger editor)

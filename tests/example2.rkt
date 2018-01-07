@@ -5,7 +5,8 @@
          racket/serialize
          racket/pretty)
 
-(require "main.rkt")
+(require "../editor/main.rkt"
+         (submod "../editor/stdlib.rkt" editor))
 
 (define m (new horizontal-block$))
 

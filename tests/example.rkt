@@ -5,7 +5,8 @@
          racket/serialize
          racket/pretty)
 
-(require "editor/main.rkt")
+(require "../editor/main.rkt"
+         (submod "../editor/stdlib.rkt" editor))
 
 (define idmt (new vertical-block$))
 (define counter 0)
