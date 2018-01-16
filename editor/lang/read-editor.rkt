@@ -5,6 +5,7 @@
 (require racket/serialize
          racket/port
          racket/list
+         racket/set
          syntax/srcloc
          syntax/readerr
          syntax-color/racket-lexer
@@ -86,7 +87,8 @@
   (test-reader "(+ 1 #editor(1 #e2 3 4 5)())")
   (test-reader "(+ 1 #editor(1 #e2)())"))
 
-(define (lex-editor in) ; offset mode*)
+(define (lex-editor in
+                    #:fill-matches [matches #f]) ; offset mode*)
   ;(define mode (or mode* '()))
   (define-values (text type paren start end)
     (racket-lexer in))
@@ -115,9 +117,12 @@
                   (equal? open-par (car par-stack)))
              (define new-stack (cdr par-stack))
              (if (empty? new-stack)
-                 (if read-elaborator?
-                     (values new-text 'parenthesis #f start end)
-                     (loop new-text new-stack e #t))
+                 (cond
+                   [read-elaborator?
+                    (when matches
+                      (set-add! matches (list new-text start e)))
+                    (values new-text 'parenthesis #f start e)]
+                   [else (loop new-text new-stack e #t)])
                  (loop new-text new-stack e read-elaborator?))]
             [else
              (values new-text 'error #f start end)])]
