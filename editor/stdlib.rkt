@@ -75,10 +75,12 @@
       (send this refresh))))
 
 (define editor-snip%
-  (class snip%
-    (inherit get-flags set-flags)
+  (class* snip% (readable-snip<%>)
+    (inherit get-flags set-flags set-snipclass)
     (init-field editor)
     (super-new)
+    (set-snipclass editor-snip-class)
+    (send (get-the-snip-class-list) add editor-snip-class)
     (set-flags (cons 'handles-events (get-flags)))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
       (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
@@ -99,7 +101,19 @@
         (send admin resized this #t)))
     (define/override (copy)
       (new editor-snip%
-           [editor (send editor copy)]))))
+           [editor (send editor copy)]))
+    (define/override (get-text offset num [flattened? #f])
+      ;; Disregarding flattened? ...
+      (format "#editor(~s)~s" "TODO" (serialize editor)))
+    (define/public (read-special src line col pos)
+      `(#%editor (foo) (serialize editor)))))
+
+(define editor-snip-class%
+  (class snip-class%
+    (inherit set-classname)
+    (super-new)))
+
+(define editor-snip-class (new editor-snip-class%))
 
 ;; ===================================================================================================
 

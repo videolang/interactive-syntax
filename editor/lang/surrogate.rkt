@@ -4,7 +4,7 @@
 (require racket/class
          racket/list
          framework
-         racket/gui/base
+         (only-in racket/gui/base open-input-text-editor)
          images/icons/style
          images/icons/control
          syntax-color/module-lexer
@@ -12,6 +12,7 @@
          racket/set
          racket/port
          racket/serialize
+         "../stdlib.rkt"
          "read-editor.rkt")
 
 (define surrogate%
@@ -65,12 +66,15 @@
           (define sorted-editors
             (sort (set->list data) > #:key second))
           (for ([e (in-list sorted-editors)])
-            (with-handlers ([exn:fail (λ (e) (void))])
+            (with-handlers ([exn:fail? (λ (e)
+                                         (raise e)
+                                         (void))])
               (match-define `(#%editor ,elaborator ,editor)
                 (with-input-from-string (first e)
                   (λ ()
                     (parameterize ([current-readtable (make-editor-readtable)])
                       (read)))))
+              ;(displayln (deserialize editor))
               (send text delete (sub1 (second e)) (sub1 (third e)) #f)
-              (send text insert (deserialize editor) (sub1 (second e))))))
+              (send text insert (new editor-snip% [editor (deserialize editor)]) (sub1 (second e))))))
         #f))

@@ -24,8 +24,11 @@
 (new label$ [parent list-b]
      [text "^^ The Cool Button ^^"])
 
+#|
 (define f (new frame% [label "Editor"]))
 (new editor-canvas%
      [parent f]
      [editor m])
 (send f show #t)
+|#
+(deserialize (serialize m))
