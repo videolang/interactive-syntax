@@ -7,6 +7,7 @@
          racket/stxparam
          racket/splicing
          (for-syntax racket/base
+                     racket/require-transform
                      racket/syntax
                      syntax/parse
                      syntax/parse/lib/function-header
@@ -35,18 +36,60 @@
      #`(module* editor #f
          #,@(map syntax-local-introduce (reverse (unbox editor-submod-box))))]))
 
+;; Since the editor submodule is a language detail, we want
+;; a dedicated for-editor require subform.
+(define-syntax for-editor
+  (make-require-transformer
+   (λ (stx)
+     (syntax-parse stx
+       [(_ name ...)
+        (syntax-local-lift-module-end-declaration
+         #'(editor-submod
+             (require name ...)))])
+     (values '() '()))))
+
+(define-syntax (begin-for-editor stx)
+  (syntax-parse stx
+    [(_ code ...)
+     (syntax/loc stx
+       (editor-submod code ...))]))
+
+(define-syntax (define-for-editor stx)
+  (syntax-parse stx
+    [(_ name:id body)
+     (syntax/loc stx
+       (begin-for-syntax
+         (define name body)))]
+    [(_ name:function-header body)
+     (syntax/loc stx
+       (begin-for-syntax
+         (define name body)))]))
+
 ;; ===================================================================================================
+
+;; Keys for hidden methods. Only functions in
+;;   this module should access these methods directly.
+(define serial-key (generate-member-key))
+(define deserial-key (generate-member-key))
+(define copy-key (generate-member-key))
+(define elaborator-key (generate-member-key))
 
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
 (define-syntax (#%editor stx)
   (syntax-parse stx
-    [(_ elaborator body)
-     #'(elaborator body)]))
+    [(_ (elaborator-binding elaborator-name) body)
+     #:with elaborator (dynamic-require (syntax->datum #'elaborator-binding)
+                                        (syntax->datum #'elaborator-name))
+     #'(elaborator 'body)]))
 
-(define serial-key (generate-member-key))
-(define deserial-key (generate-member-key))
-(define copy-key (generate-member-key))
+;; Returns an identifier that contains
+;;   the binding for an editor's elaborator.
+;; To be put into the #editor()() form.
+;; (is-a?/c editor$) -> identifier?
+(define (editor->elaborator editor)
+  (define-member-name elaborator elaborator-key)
+  (send editor elaborator))
 
 (begin-for-syntax
   (define-syntax-class defelaborate
@@ -99,6 +142,7 @@
                                            [(elaborator.body 1) (list #'#'this)]))
                     internal-body) ...)
          (~seq body ...)))
+     #:with elaborator-name (format-id stx "~a:elaborate" #'name)
      #:with name-deserialize (format-id stx "~a:deserialize" #'name)
      (define dd?* (syntax-e #'dd?))
      (unless (or (not dd?*) (eq? 'module (syntax-local-context)))
@@ -106,11 +150,15 @@
      (define serialize-method (gensym 'serialize))
      (define deserialize-method (gensym 'deserialize))
      (define copy-method (gensym 'copy))
+     (define elaborator-method (gensym 'elaborator))
      (define state-methods (for/list ([i (in-list (attribute state.getter))])
                              (gensym (syntax->datum i))))
      (define base? (syntax-e (attribute b?)))
      #`(begin
-         (define-syntax (elaborator.name stx)
+         #,@(if dd?*
+                (list #'(provide elaborator-name))
+                '())
+         (define-syntax (elaborator-name stx)
            (syntax-parse stx
              [(_ elaborator.data)
               elaborator.body ...]))
@@ -118,6 +166,7 @@
           (define-member-name #,serialize-method serial-key)
           (define-member-name #,deserialize-method deserial-key)
           (define-member-name #,copy-method copy-key)
+          (define-member-name #,elaborator-method elaborator-key)
           #,@(if dd?*
                  (list
                   #`(provide name-deserialize)
@@ -158,6 +207,12 @@
                                      (or (current-load-relative-directory) (current-directory)))]))
                    interfaces ...)
                   #f)
+                 #,@(if dd?*
+                        (list
+                         #`(define (#,elaborator-method)
+                             #'name)
+                         #`(#,(if base? #'public #'override) #,elaborator-method))
+                        '())
                  (define (#,serialize-method)
                    (vector #,(if base?
                                  #'#f

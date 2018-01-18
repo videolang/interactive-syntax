@@ -3,7 +3,8 @@
 (define deps '("base"
                "syntax-color-lib"
                "draw-lib"
-               "gui-lib"))
+               "gui-lib"
+               "images-lib"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 ;(define scribblings '(("scribblings/idmt.scrbl" ())))
 (define pkg-desc "Description Here")
