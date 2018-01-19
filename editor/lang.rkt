@@ -167,7 +167,7 @@
                     public-state:defpubstate
                     (~optional elaborator:defelaborate
                                #:defaults ([elaborator.data #'this]
-                                           [(elaborator.body 1) (list #'#''this)]))
+                                           [(elaborator.body 1) (list #'this)]))
                     internal-body) ...)
          (~seq body ...)))
      #:with elaborator-name (format-id stx "~a:elaborate" #'name)
@@ -188,9 +188,10 @@
                 '())
          (define-syntax (elaborator-name stx)
            (syntax-parse stx
-             [(_ elaborator.data)
-              #'(deserialize 'elaborator.data)
-              #|elaborator.body ...|#]))
+             [(_ data)
+              #'(begin
+                  (define elaborator.data (deserialize 'data))
+                  elaborator.body ...)]))
          (#,(if dd?* #'editor-submod #'begin)
           (define-member-name #,serialize-method serial-key)
           (define-member-name #,deserialize-method deserial-key)
