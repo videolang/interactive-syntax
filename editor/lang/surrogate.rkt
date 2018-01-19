@@ -12,6 +12,7 @@
          racket/set
          racket/port
          racket/serialize
+         "../context.rkt"
          "../stdlib.rkt"
          "read-editor.rkt")
 

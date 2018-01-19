@@ -1,0 +1,118 @@
+#lang racket/base
+
+(provide (all-defined-out)
+         (rename-out [editor-snip-class snip-class]))
+
+(require "lang.rkt"
+         racket/contract/base
+         racket/class
+         racket/gui/base
+         file/convertible
+         racket/match
+         racket/list
+         racket/serialize
+         racket/format
+         racket/math)
+
+(define editor-context<$>
+  (interface ()
+    resized
+    recounted))
+
+(define editor<$>
+  (interface*
+   ()
+   ([prop:convertible
+     (λ (this format default)
+       (case format
+         [(png-bytes)
+          (define-values (w* h* l t r b) (send this get-extent 0 0))
+          (define w (exact-ceiling (max w* 1)))
+          (define h (exact-ceiling (max h* 1)))
+          (define bit (make-object bitmap% w h))
+          (send this draw (new bitmap-dc% [bitmap bit]) 0 0)
+          (define s (open-output-bytes))
+          (send bit save-file s 'png)
+          (get-output-bytes s)]
+         [else default]))])
+   partial-extent
+   (get-extent (->m real? real? (values real? real? real? real? real? real?)))
+   (resize (->m real? real? any/c))
+   (draw (->m (is-a?/c dc<%>) real? real? void?))
+   (get-count (->m integer?))
+   split
+   merge
+   (on-event (->m (is-a?/c event%) real? real? any))
+   (set-context (->m (is-a?/c editor-context<$>) void?))
+   (get-context (->m (or/c #f (is-a?/c editor-context<$>))))))
+
+;; ===================================================================================================
+
+(define editor-canvas%
+  (class canvas%
+    (init-field editor)
+    (match-define-values (width height _ _ _ _)
+      (send editor get-extent 0 0))
+    (super-new [min-width (exact-ceiling width)]
+               [min-height (exact-ceiling height)]
+               [stretchable-width #f]
+               [stretchable-height #f]
+               [paint-callback (λ (c dc)
+                                 (send editor draw dc 0 0)
+                                 (match-define-values (width height _ _ _ _)
+                                   (send editor get-extent (send editor get-x) (send editor get-y)))
+                                 (send this min-width (exact-ceiling width))
+                                 (send this min-height (exact-ceiling height)))])
+    (define/override (on-event event)
+      (send editor on-event event 0 0)
+      (send this refresh))
+    (define/override (on-char event)
+      (send editor on-event event 0 0)
+      (send this refresh))))
+  
+(define editor-snip%
+  (class* snip% (readable-snip<%>)
+    (inherit get-flags set-flags set-snipclass)
+    (init-field editor)
+    (super-new)
+    (set-flags (cons 'handles-events (get-flags)))
+    (set-snipclass editor-snip-class)
+    (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
+      (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
+      (define (wsb! x y) (when x (set-box! x y)))
+      (wsb! w w*)
+      (wsb! h h*)
+      (wsb! ls l*)
+      (wsb! s t*)
+      (wsb! rs r*)
+      (wsb! d b*))
+    (define/override (draw dc x y left top right bottom dx dy draw-caret)
+      (send editor draw dc x y))
+    (define/override (on-event dc x y ex ey event)
+      (send editor get-extent x y) ;; TODO, remove this
+      (send editor on-event event x y)
+      (define admin (send this get-admin))
+      (when admin
+        (send admin resized this #t)))
+    (define/override (copy)
+      (new editor-snip%
+           [editor (send editor copy)]))
+    (define/private (editor-binding)
+      (match-define (list binding-mod binding-name)
+        (editor->elaborator editor))
+      (list (serialize binding-mod) binding-name))
+    (define/override (get-text offset num [flattened? #f])
+      ;; Disregarding flattened? ...
+      (format "#editor~s~s" (editor-binding) (serialize editor)))
+    (define/public (read-special src line col pos)
+      `(#%editor ,(editor-binding) ,(serialize editor)))))
+
+(define editor-snip-class%
+  (class snip-class%
+    (inherit set-classname)
+    (super-new)
+    (set-classname (~s '(lib "main.rkt")))))
+
+(define editor-snip-class (new editor-snip-class%))
+
+;; ===================================================================================================

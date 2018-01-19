@@ -6,8 +6,10 @@
          racket/serialize
          racket/stxparam
          racket/splicing
+         syntax/location
          (for-syntax racket/base
                      racket/require-transform
+                     racket/provide-transform
                      racket/syntax
                      syntax/parse
                      syntax/parse/lib/function-header
@@ -38,15 +40,34 @@
 
 ;; Since the editor submodule is a language detail, we want
 ;; a dedicated for-editor require subform.
-(define-syntax for-editor
-  (make-require-transformer
-   (λ (stx)
-     (syntax-parse stx
-       [(_ name ...)
-        (syntax-local-lift-module-end-declaration
-         #'(editor-submod
-             (require name ...)))])
-     (values '() '()))))
+(begin-for-syntax
+  (struct for-editor-struct ()
+    #:property prop:require-transformer
+    (λ (str)
+      (λ (stx)
+        (syntax-parse stx
+          [(_ name ...)
+           (syntax-local-lift-module-end-declaration
+            #'(editor-submod
+               (require name ...)))])
+        (values '() '())))
+    #:property prop:provide-pre-transformer
+    (λ (str)
+      (λ (stx mode)
+        (syntax-parse stx
+          [(_ name ...)
+           (syntax-local-lift-module-end-declaration
+            #'(editor-submod
+               (provide name ...)))
+           #'(for-editor name ...)])))
+    #:property prop:provide-transformer
+    (λ (str)
+      (λ (stx mode)
+        (syntax-parse stx
+          [(_ name ...)
+           '()])))))
+
+(define-syntax for-editor (for-editor-struct))
 
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
@@ -72,21 +93,23 @@
 (define serial-key (generate-member-key))
 (define deserial-key (generate-member-key))
 (define copy-key (generate-member-key))
-(define elaborator-key (generate-member-key))
+;(define elaborator-key (generate-member-key))
+(define elaborator-key (member-name-key elaborate))
 
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
 (define-syntax (#%editor stx)
   (syntax-parse stx
     [(_ (elaborator-binding elaborator-name) body)
-     #:with elaborator (dynamic-require (syntax->datum #'elaborator-binding)
-                                        (syntax->datum #'elaborator-name))
+     (define/syntax-parse elaborator
+       (syntax-local-lift-require (deserialize (syntax->datum #'elaborator-binding))
+                                  (datum->syntax #f (syntax->datum #'elaborator-name))))
      #'(elaborator 'body)]))
 
 ;; Returns an identifier that contains
 ;;   the binding for an editor's elaborator.
 ;; To be put into the #editor()() form.
-;; (is-a?/c editor$) -> identifier?
+;; (is-a?/c editor$) -> (listof module-path-index? symbol?)
 (define (editor->elaborator editor)
   (define-member-name elaborator elaborator-key)
   (send editor elaborator))
@@ -159,7 +182,7 @@
                 (list #'(provide elaborator-name))
                 '())
          (define-syntax (elaborator-name stx)
-           (syntax-parse stx
+           (syntax-case stx ()
              [(_ elaborator.data)
               elaborator.body ...]))
          (#,(if dd?* #'editor-submod #'begin)
@@ -210,7 +233,8 @@
                  #,@(if dd?*
                         (list
                          #`(define (#,elaborator-method)
-                             #'name)
+                             (list #,(if dd?* #'(quote-module-path "..") #'(quote-module-path))
+                                   'elaborator-name))
                          #`(#,(if base? #'public #'override) #,elaborator-method))
                         '())
                  (define (#,serialize-method)
