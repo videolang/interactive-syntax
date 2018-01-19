@@ -104,7 +104,7 @@
      (define/syntax-parse elaborator
        (syntax-local-lift-require (deserialize (syntax->datum #'elaborator-binding))
                                   (datum->syntax #f (syntax->datum #'elaborator-name))))
-     #'(elaborator 'body)]))
+     #'(elaborator body)]))
 
 ;; Returns an identifier that contains
 ;;   the binding for an editor's elaborator.
@@ -147,6 +147,11 @@
     [x:defpubstate
      #`(defstate-parameter #,stx define-public-state)]))
 
+;; We don't want to get editor classes when
+;; deserializing new editors.
+(define deserialize-editor-classes?
+  (make-parameter #t))
+
 ;; Each editor definition has three parts:
 ;; 1. A phase 1 elaboration
 ;; 2. A submodule with interaction code
@@ -162,7 +167,7 @@
                     public-state:defpubstate
                     (~optional elaborator:defelaborate
                                #:defaults ([elaborator.data #'this]
-                                           [(elaborator.body 1) (list #'#'this)]))
+                                           [(elaborator.body 1) (list #'#''this)]))
                     internal-body) ...)
          (~seq body ...)))
      #:with elaborator-name (format-id stx "~a:elaborate" #'name)
@@ -182,9 +187,10 @@
                 (list #'(provide elaborator-name))
                 '())
          (define-syntax (elaborator-name stx)
-           (syntax-case stx ()
+           (syntax-parse stx
              [(_ elaborator.data)
-              elaborator.body ...]))
+              #'(deserialize 'elaborator.data)
+              #|elaborator.body ...|#]))
          (#,(if dd?* #'editor-submod #'begin)
           (define-member-name #,serialize-method serial-key)
           (define-member-name #,deserialize-method deserial-key)
@@ -192,20 +198,21 @@
           (define-member-name #,elaborator-method elaborator-key)
           #,@(if dd?*
                  (list
-                  #`(provide name-deserialize)
                   #'(provide name)
-                  #`(define name-deserialize
-                      (make-deserialize-info
-                       (λ (sup table public-table)
-                         (define this (new name))
-                         (send this #,deserialize-method (vector sup table public-table))
-                         this)
-                       (λ ()
-                         (define pattern (new name))
-                         (values pattern
-                                 (λ (other)
-                                   (send pattern #,copy-method other)))))))
-                 '())
+                  #`(module+ deserialize
+                     (provide name-deserialize)
+                     (define name-deserialize
+                       (make-deserialize-info
+                        (λ (sup table public-table)
+                          (define this (new name))
+                          (send this #,deserialize-method (vector sup table public-table))
+                          this)
+                        (λ ()
+                          (define pattern (new name))
+                          (values pattern
+                                  (λ (other)
+                                    (send pattern #,copy-method other))))))))
+                  '())
           (splicing-syntax-parameterize ([defstate-parameter
                                            (syntax-parser
                                              [(_ st:defstate who)
@@ -225,7 +232,9 @@
                                     (make-serialize-info
                                      (λ (this)
                                        (send this #,serialize-method))
-                                     #'name-deserialize
+                                     (cons 'name-deserialize
+                                           (module-path-index-join (quote-module-path deserialize)
+                                                                   #f))
                                      #t
                                      (or (current-load-relative-directory) (current-directory)))]))
                    interfaces ...)

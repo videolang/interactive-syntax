@@ -31,4 +31,6 @@
      [editor m])
 (send f show #t)
 |#
-(deserialize (serialize m))
+(require racket/port)
+(send the-clipboard set-clipboard-string (with-output-to-string (λ () (write (serialize m)))) 0)
+;(deserialize (serialize m))
