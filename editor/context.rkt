@@ -69,7 +69,11 @@
     (define/override (on-char event)
       (send editor on-event event 0 0)
       (send this refresh))))
-  
+
+;; ===================================================================================================
+
+;; Editor snip and snipclass implementations
+
 (define editor-snip%
   (class* snip% (readable-snip<%>)
     (inherit get-flags set-flags set-snipclass)
@@ -77,6 +81,7 @@
     (super-new)
     (set-flags (cons 'handles-events (get-flags)))
     (set-snipclass editor-snip-class)
+    (send (get-the-snip-class-list) add editor-snip-class)
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
       (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
       (define (wsb! x y) (when x (set-box! x y)))
@@ -105,13 +110,17 @@
       ;; Disregarding flattened? ...
       (format "#editor~s~s" (editor-binding) (serialize editor)))
     (define/public (read-special src line col pos)
-      `(#%editor ,(editor-binding) ,(serialize editor)))))
-
+      `(#%editor ,(editor-binding) ,(serialize editor)))
+    (define/override (write f)
+      (define text (string->bytes/utf-8 (get-text 0 0)))
+      (send f put text))))
+ 
 (define editor-snip-class%
   (class snip-class%
     (inherit set-classname)
     (super-new)
-    (set-classname (~s '(lib "main.rkt")))))
+    (set-classname (~s '((lib "context.rkt" "editor")
+                         (lib "context-text.rkt" "editor"))))))
 
 (define editor-snip-class (new editor-snip-class%))
 

@@ -189,7 +189,7 @@
          (define-syntax (elaborator-name stx)
            (syntax-parse stx
              [(_ data)
-              #'(begin
+              #'(let ()
                   (define elaborator.data (deserialize 'data))
                   elaborator.body ...)]))
          (#,(if dd?* #'editor-submod #'begin)
