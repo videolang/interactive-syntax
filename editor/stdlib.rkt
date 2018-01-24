@@ -29,13 +29,11 @@
                      racket/syntax
                      syntax/parse))
 
-#|
 ;; Because this module is part of the editor language,
 ;;  its base lang needs to be something more like racket/base
 ;;  rather than editor
 (begin-for-syntax
-  (current-editor-base-lang #'racket/base))
-|#
+  (current-editor-base-lang 'racket/base))
 
 (begin-for-editor
   (define text-size-dc

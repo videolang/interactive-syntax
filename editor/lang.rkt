@@ -21,9 +21,8 @@
 ;; Because we use lang in building the stdlib, which is exported
 ;; as part of the lang, we want to use racket/base to bootstrap
 ;; that language.
-;(define-for-syntax current-editor-base-lang (make-parameter 'editor))
-(define-for-syntax current-editor-base-lang (make-parameter 'racket/base))
-;(define-for-syntax current-editor-base-lang (make-parameter '#f))
+(define-for-syntax current-editor-base-lang (make-parameter 'editor))
+;(define-for-syntax current-editor-base-lang (make-parameter 'racket/base))
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer))
 
@@ -88,7 +87,7 @@
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
-     #:with baselang (editor-syntax-introduce (format-id stx "racket/base"))
+     #:with baselang (editor-syntax-introduce (datum->syntax stx (current-editor-base-lang)))
      #:with (marked-code ...) (editor-syntax-introduce #'(code ...))
      (syntax/loc stx
        (editor-submod
@@ -197,7 +196,7 @@
      #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
      #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
      #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
-                                   '(racket/base
+                                   `(,(current-editor-base-lang)
                                      racket/class
                                      racket/serialize
                                      editor/lang))
@@ -346,9 +345,16 @@
      #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
      #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
      #:with (marked-mixins ...) (editor-syntax-introduce #'(mixins ...))
+     #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
+                                   `(,(current-editor-base-lang)
+                                     racket/class
+                                     racket/serialize
+                                     editor/lang))
      #`(begin
          (editor-submod
           (provide name)
+          (require marked-reqs ...)
+          (#%require #,(quote-module-path))
           (define (name $)
             (~define-editor #,stx
                             name
