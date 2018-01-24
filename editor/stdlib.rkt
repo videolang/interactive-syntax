@@ -4,6 +4,13 @@
 
 (require "lang.rkt"
          (for-editor "context.rkt"
+                     racket/match
+                     racket/set
+                     racket/list
+                     racket/class
+                     racket/serialize
+                     racket/contract/base
+                     racket/string
                      (except-in racket/gui/base
                                 editor-snip%
                                 editor-canvas%))
@@ -22,8 +29,17 @@
                      racket/syntax
                      syntax/parse))
 
-(define text-size-dc
-  (new bitmap-dc% [bitmap (make-object bitmap% 1 1)]))
+#|
+;; Because this module is part of the editor language,
+;;  its base lang needs to be something more like racket/base
+;;  rather than editor
+(begin-for-syntax
+  (current-editor-base-lang #'racket/base))
+|#
+
+(begin-for-editor
+  (define text-size-dc
+    (new bitmap-dc% [bitmap (make-object bitmap% 1 1)])))
 
 (define-base-editor* base$ object% (editor<$>)
   (super-new)
@@ -51,7 +67,6 @@
   (define/public (get-context)
     context))
 
-
 (define-editor scroller$ base$
   (super-new)
   (init [(ic content)])
@@ -69,10 +84,11 @@
             horizontal-scrollbar-height))
   (define-state child #f))
 
-(define receiver<$>
-  (interface ()
-    on-receive
-    signal))
+(begin-for-editor
+  (define receiver<$>
+    (interface ()
+      on-receive
+      signal)))
 
 (define-editor-mixin receiver$$
   #:interfaces (receiver<$>)
@@ -215,11 +231,12 @@
     (register-parent internal-parent)
     (send parent add-child this)))
 
-(define stretchable<$>
-  (interface ()
-    (get-min-extent (->m real? real? (values real? real?)))
-    (get-max-extent (->m real? real? (values real? real?)))
-    (draw-stretched (->m (is-a?/c dc<%>) real? real? real? real? any))))
+(begin-for-editor
+  (define stretchable<$>
+    (interface ()
+      (get-min-extent (->m real? real? (values real? real?)))
+      (get-max-extent (->m real? real? (values real? real?)))
+      (draw-stretched (->m (is-a?/c dc<%>) real? real? real? real? any)))))
 
 (begin-for-editor
   (define parent<$>
@@ -239,7 +256,7 @@
   (define y-extent iye)
   (define x-draw ixd)
   (define y-draw iyd)
-  (define-public-state editor-list '())
+  (define-state editor-list '())
   (super-new)
   (define/public (add-child editor)
     (set! editor-list (append editor-list (list (list editor (is-a? editor stretchable<$>)))))
@@ -480,6 +497,21 @@
 
 (define-editor radio$ (list-block$$ widget$)
   (super-new))
+
+(define-editor-mixin pickable$$
+  (super-new)
+  (init-field [(in normal) (void)]
+              [(ih hover) (void)]
+              [(ip picked) (void)])
+  (define-state normal-style in)
+  (define-state hover-style ih)
+  (define-state picked-style ip)
+  ; states can be one of: normal, hover, or picked
+  (define-state state 'normal)
+  (define (get-state state)
+    state)
+  (define (set-state! s)
+    (set! state s)))
 
 (define-editor-mixin focus$$
   (super-new)

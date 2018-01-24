@@ -1,6 +1,7 @@
 #lang racket/base
 
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (for-syntax current-editor-base-lang))
 
 (require racket/class
          racket/serialize
@@ -8,12 +9,23 @@
          racket/splicing
          syntax/location
          (for-syntax racket/base
+                     racket/function
                      racket/require-transform
                      racket/provide-transform
                      racket/syntax
                      syntax/parse
                      syntax/parse/lib/function-header
+                     syntax/location
                      racket/serialize))
+
+;; Because we use lang in building the stdlib, which is exported
+;; as part of the lang, we want to use racket/base to bootstrap
+;; that language.
+;(define-for-syntax current-editor-base-lang (make-parameter 'editor))
+(define-for-syntax current-editor-base-lang (make-parameter 'racket/base))
+;(define-for-syntax current-editor-base-lang (make-parameter '#f))
+
+(define-for-syntax editor-syntax-introduce (make-syntax-introducer))
 
 ;; Creates a box for storing submodule syntax pieces.
 ;; Note that this box is newly instantiated for every module
@@ -35,7 +47,9 @@
 (define-syntax (define-editor-submodule stx)
   (syntax-parse stx
     [(_)
-     #`(module* editor #f
+     #`(module* editor racket/base
+         (require racket/serialize
+                  racket/class)
          #,@(map syntax-local-introduce (reverse (unbox editor-submod-box))))]))
 
 ;; Since the editor submodule is a language detail, we want
@@ -47,9 +61,11 @@
       (λ (stx)
         (syntax-parse stx
           [(_ name ...)
+           #:with (marked-name ...) (editor-syntax-introduce #'(name ...))
+           #:with r/b (editor-syntax-introduce (format-id stx "racket/base"))
            (syntax-local-lift-module-end-declaration
-            #'(editor-submod
-               (require name ...)))])
+            #`(editor-submod
+               (require r/b marked-name ...)))])
         (values '() '())))
     #:property prop:provide-pre-transformer
     (λ (str)
@@ -57,7 +73,7 @@
         (syntax-parse stx
           [(_ name ...)
            (syntax-local-lift-module-end-declaration
-            #'(editor-submod
+            #`(editor-submod
                (provide name ...)))
            #'(for-editor name ...)])))
     #:property prop:provide-transformer
@@ -72,18 +88,22 @@
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
+     #:with baselang (editor-syntax-introduce (format-id stx "racket/base"))
+     #:with (marked-code ...) (editor-syntax-introduce #'(code ...))
      (syntax/loc stx
-       (editor-submod code ...))]))
+       (editor-submod
+        (require baselang)
+        marked-code ...))]))
 
 (define-syntax (define-for-editor stx)
   (syntax-parse stx
     [(_ name:id body)
      (syntax/loc stx
-       (begin-for-syntax
+       (begin-for-editor
          (define name body)))]
     [(_ name:function-header body)
      (syntax/loc stx
-       (begin-for-syntax
+       (begin-for-editor
          (define name body)))]))
 
 ;; ===================================================================================================
@@ -120,12 +140,14 @@
     (pattern (define-elaborate data body ...+)))
   (define-syntax-class defstate
     #:literals (define-state)
-    (pattern (define-state name body ...)
+    (pattern (define-state marked-name:id body ...)
+             #:attr name (editor-syntax-introduce (attribute marked-name))
              #:attr getter (format-id this-syntax "get-~a" #'name)
              #:attr setter (format-id this-syntax "set-~a!" #'name)))
   (define-syntax-class defpubstate
     #:literals (define-public-state)
-    (pattern (define-public-state name body ...))))
+    (pattern (define-public-state marked-name:id body ...)
+             #:attr name (editor-syntax-introduce (attribute marked-name)))))
 
 (define-syntax-parameter defstate-parameter
   (syntax-parser
@@ -158,12 +180,12 @@
 ;; 3. A deserializer submodule
 (define-syntax (~define-editor stx)
   (syntax-parse stx
-    [(_ orig-stx name:id supclss (interfaces ...)
+    [(_ orig-stx name:id supclass (interfaces ...)
         (~or (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
              (~optional (~seq #:direct-deserialize? dd?) #:defaults ([dd? #'#t])))
         ...
         (~and
-         (~seq (~or state:defstate
+         (~seq (~or plain-state:defstate
                     public-state:defpubstate
                     (~optional elaborator:defelaborate
                                #:defaults ([elaborator.data #'this]
@@ -172,6 +194,15 @@
          (~seq body ...)))
      #:with elaborator-name (format-id stx "~a:elaborate" #'name)
      #:with name-deserialize (format-id stx "~a:deserialize" #'name)
+     #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
+     #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
+     #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
+                                   '(racket/base
+                                     racket/class
+                                     racket/serialize
+                                     editor/lang))
+     #:with marked-supclass (editor-syntax-introduce #'supclass)
+     #:with (state:defstate ...) (editor-syntax-introduce #'(plain-state ...))
      (define dd?* (syntax-e #'dd?))
      (unless (or (not dd?*) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
@@ -192,7 +223,11 @@
               #'(let ()
                   (define elaborator.data (deserialize 'data))
                   elaborator.body ...)]))
-         (#,(if dd?* #'editor-submod #'begin)
+         (#,@(if dd?*
+                 #`(editor-submod
+                    (require marked-reqs ...)
+                    (#%require #,(quote-module-path)))
+                 #'(begin))
           (define-member-name #,serialize-method serial-key)
           (define-member-name #,deserialize-method deserial-key)
           (define-member-name #,copy-method copy-key)
@@ -218,9 +253,9 @@
                                            (syntax-parser
                                              [(_ st:defstate who)
                                               #'(begin
-                                                  (define st.name st.body (... ...)))]
+                                                  (define st.marked-name st.body (... ...)))]
                                              [(_ st:defpubstate who)
-                                              #'(field [st.name st.body (... ...)])])])
+                                              #'(field [st.marked-name st.body (... ...)])])])
             (define name
               (let ()
                 #,@(for/list ([sm (in-list state-methods)])
@@ -228,7 +263,7 @@
                 (class/derived
                  orig-stx
                  (name
-                  supclss
+                  marked-supclass
                   ((interface* () ([prop:serializable
                                     (make-serialize-info
                                      (λ (this)
@@ -238,7 +273,7 @@
                                                                    #f))
                                      #t
                                      (or (current-load-relative-directory) (current-directory)))]))
-                   interfaces ...)
+                   marked-interfaces ...)
                   #f)
                  #,@(if dd?*
                         (list
@@ -252,10 +287,10 @@
                                  #'#f
                                  #`(super #,serialize-method))
                            (make-immutable-hash
-                            `#,(for/list ([i (in-list (attribute state.name))])
+                            `#,(for/list ([i (in-list (attribute state.marked-name))])
                                  #`(#,(syntax->datum i) . ,#,i)))
                            (make-immutable-hash
-                            `#,(for/list ([i (in-list (attribute public-state.name))])
+                            `#,(for/list ([i (in-list (attribute public-state.marked-name))])
                                  #`(#,(syntax->datum i) . ,#,i)))))
                  (#,(if base? #'public #'override) #,serialize-method)
                  (define (#,deserialize-method data)
@@ -265,26 +300,26 @@
                    #,(if base?
                          #`(void)
                          #`(super #,deserialize-method sup))
-                   #,@(for/list ([i (in-list (attribute state.name))])
+                   #,@(for/list ([i (in-list (attribute state.marked-name))])
                         #`(set! #,i (hash-ref table '#,(syntax->datum i))))
-                   #,@(for/list ([i (in-list (attribute public-state.name))])
+                   #,@(for/list ([i (in-list (attribute public-state.marked-name))])
                         #`(set! #,i (hash-ref public-table '#,(syntax->datum i)))))
                  (#,(if base? #'public #'override) #,deserialize-method)
                  (define (#,copy-method other)
                    #,(if base?
                          #`(void)
                          #`(super #,copy-method other))
-                   #,@(for/list ([i (in-list (attribute state.name))]
+                   #,@(for/list ([i (in-list (attribute state.marked-name))]
                                  [get (in-list state-methods)])
                         #`(set! #,i (send other #,get)))
-                   #,@(for/list ([i (in-list (attribute public-state.name))])
+                   #,@(for/list ([i (in-list (attribute public-state.marked-name))])
                         #`(set! #,i (get-field #,i other)))
                    (void))
                  (#,(if base? #'public #'override) #,copy-method)
-                 #,@(for/list ([i (in-list (attribute state.name))]
+                 #,@(for/list ([i (in-list (attribute state.marked-name))]
                                [sm (in-list state-methods)])
                       #`(define/public (#,sm) #,i))
-                 body ...))))))]))
+                 marked-body ...))))))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
@@ -308,16 +343,19 @@
              (~optional (~seq #:mixins (mixins ...)) #:defaults ([(mixins 1) '()])))
         ...
         body ...)
+     #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
+     #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
+     #:with (marked-mixins ...) (editor-syntax-introduce #'(mixins ...))
      #`(begin
          (editor-submod
           (provide name)
           (define (name $)
             (~define-editor #,stx
                             name
-                            ((compose #,@(reverse (attribute mixins))) $)
-                            (interfaces ...)
+                            ((compose #,@(reverse (attribute marked-mixins))) $)
+                            (marked-interfaces ...)
                             #:direct-deserialize? #f
-                            body ...)
+                            marked-body ...)
             name)))]))
 
 (define-logger editor)
