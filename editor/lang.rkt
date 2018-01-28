@@ -1,7 +1,9 @@
 #lang racket/base
 
 (provide (all-defined-out)
-         (for-syntax current-editor-base-lang))
+         (for-syntax current-editor-base-lang
+                     editor-list-box
+                     editor-mixin-list-box))
 
 (require racket/class
          racket/serialize
@@ -17,6 +19,27 @@
                      syntax/parse/lib/function-header
                      syntax/location
                      racket/serialize))
+
+;; To be able to instantiate the found editors, we need each
+;; module to be able to track the editors created in its
+;; (partially defined) file.
+(module submod-acc racket/base
+  (provide (all-defined-out))
+  (define editor-list-box (box '()))
+  (define editor-mixin-list-box (box '())))
+(require (for-syntax 'submod-acc))
+
+;; We also want a 'best effort' tool, so
+;;   IF a box has been mapped to a continuation mark
+;;   matching these keys, it will be added.
+(module key-submod racket/base
+  ;(#%declare #:cross-phase-persistent)
+  (provide editor-list-key editor-mixin-list-key)
+  (define editor-list-key 'editor-list-cmark-key)
+  (define editor-mixin-list-key 'editor-mixin-list-cmark-key))
+(require (for-syntax 'key-submod))
+
+;; ===================================================================================================
 
 ;; Because we use lang in building the stdlib, which is exported
 ;; as part of the lang, we want to use racket/base to bootstrap
@@ -203,7 +226,7 @@
      #:with marked-supclass (editor-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor-syntax-introduce #'(plain-state ...))
      (define dd?* (syntax-e #'dd?))
-     (unless (or (not dd?*) (eq? 'module (syntax-local-context)))
+     (unless (or (not dd?*) (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
      (define serialize-method (gensym 'serialize))
      (define deserialize-method (gensym 'deserialize))
@@ -214,7 +237,13 @@
      (define base? (syntax-e (attribute b?)))
      #`(begin
          #,@(if dd?*
-                (list #'(provide elaborator-name))
+                (list #'(provide elaborator-name)
+                      #'(begin-for-syntax
+                          (set-box! editor-list-box (cons #'name (unbox editor-list-box)))
+                          (let ()
+                            (define b (continuation-mark-set-first #f editor-list-key))
+                            (when b
+                              (set-box! b (cons #'name (unbox b)))))))
                 '())
          (define-syntax (elaborator-name stx)
            (syntax-parse stx
@@ -351,6 +380,12 @@
                                      racket/serialize
                                      editor/lang))
      #`(begin
+         (begin-for-syntax
+           (set-box! editor-mixin-list-box (cons #'name (unbox editor-mixin-list-box)))
+           (let ()
+             (define b (continuation-mark-set-first #f editor-mixin-list-key))
+             (when b
+               (set-box! b (cons #'name (unbox b))))))
          (editor-submod
           (provide name)
           (require marked-reqs ...)
