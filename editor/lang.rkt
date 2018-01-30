@@ -1,9 +1,7 @@
 #lang racket/base
 
 (provide (all-defined-out)
-         (for-syntax current-editor-base-lang
-                     editor-list-box
-                     editor-mixin-list-box))
+         (for-syntax current-editor-base-lang))
 
 (require racket/class
          racket/serialize
@@ -23,15 +21,6 @@
 ;; To be able to instantiate the found editors, we need each
 ;; module to be able to track the editors created in its
 ;; (partially defined) file.
-(module submod-acc racket/base
-  (provide (all-defined-out))
-  (define editor-list-box (box '()))
-  (define editor-mixin-list-box (box '())))
-(require (for-syntax 'submod-acc))
-
-;; We also want a 'best effort' tool, so
-;;   IF a box has been mapped to a continuation mark
-;;   matching these keys, it will be added.
 (module key-submod racket/base
   ;(#%declare #:cross-phase-persistent)
   (provide editor-list-key editor-mixin-list-key)
@@ -239,10 +228,9 @@
          #,@(if dd?*
                 (list #'(provide elaborator-name)
                       #'(begin-for-syntax
-                          (set-box! editor-list-box (cons #'name (unbox editor-list-box)))
                           (let ()
                             (define b (continuation-mark-set-first #f editor-list-key))
-                            (when b
+                            (when (and b (box? b))
                               (set-box! b (cons #'name (unbox b)))))))
                 '())
          (define-syntax (elaborator-name stx)
@@ -381,10 +369,9 @@
                                      editor/lang))
      #`(begin
          (begin-for-syntax
-           (set-box! editor-mixin-list-box (cons #'name (unbox editor-mixin-list-box)))
            (let ()
              (define b (continuation-mark-set-first #f editor-mixin-list-key))
-             (when b
+             (when (and b (box? b))
                (set-box! b (cons #'name (unbox b))))))
          (editor-submod
           (provide name)

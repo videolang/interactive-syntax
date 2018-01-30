@@ -1,20 +1,20 @@
 #lang racket/base
 
 (provide (all-defined-out))
+(require (submod "lang.rkt" key-submod))
 
-(define ((mk-editor-list-proc symb) modpath [ns #f])
-  (parameterize ([current-namespace (make-base-namespace)])
-    (when ns
-      (namespace-attach-module-declaration ns modpath))
-    (with-handlers ([exn:fail? (λ (e) (void))])
-      (dynamic-require modpath (void)))
-    (define the-list
-      (dynamic-require-for-syntax '(submod editor/lang submod-acc)
-                                  symb))
-    (unbox the-list)))
+(define ((mk-editor-list-proc key) modpath [ns #f])
+  (define the-list (box '()))
+  (with-continuation-mark key the-list
+    (parameterize ([current-namespace (make-base-namespace)])
+      (when ns
+        (namespace-attach-module-declaration ns modpath))
+      (with-handlers ([exn:fail? (λ (e) (void))])
+        (dynamic-require modpath (void)))))
+  (unbox the-list))
 
 (define list-editors
-  (mk-editor-list-proc 'editor-list-box))
+  (mk-editor-list-proc editor-list-key))
 
 (define list-editor-mixins
-  (mk-editor-list-proc 'editor-mixin--list-box))
+  (mk-editor-list-proc editor-mixin-list-key))
