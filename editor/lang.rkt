@@ -96,6 +96,25 @@
 
 (define-syntax for-editor (for-editor-struct))
 
+;; Just as for-editor is similar to for-syntax, for-elaborator
+;; is similar to for-template. It lets helper modules bring in
+;; editor components from another module.
+(begin-for-syntax
+  (struct from-editor-struct ()
+    #:property prop:require-transformer
+    (λ (str)
+      (λ (stx)
+        (syntax-parse stx
+          [(_ name ...)
+           (for/fold ([import '()]
+                      [impot-source '()])
+                     ([n (in-list (attribute name))])
+             (define-values (i is) (expand-import n))
+             (values (append i import)
+                     (append is import-source)))])))))
+
+(define-syntax from-editor (from-editor-struct))
+
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
