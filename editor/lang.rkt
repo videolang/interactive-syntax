@@ -8,7 +8,9 @@
          racket/stxparam
          racket/splicing
          syntax/location
+         syntax/parse/define
          (for-syntax racket/base
+                     racket/match
                      racket/function
                      racket/require-transform
                      racket/provide-transform
@@ -63,6 +65,31 @@
                   racket/class)
          #,@(map syntax-local-introduce (reverse (unbox editor-submod-box))))]))
 
+;; ===================================================================================================
+
+;; We want to require edit-time code into the modules editor submod.
+(define-syntax (~require stx)
+  (syntax-parse stx
+    [(_ body ...)
+     (for ([i (in-list (attribute body))])
+       (define-values (imports import-sources) (expand-import i))
+       (for ([s (in-list import-sources)])
+         (match-define (struct* import-source ([mod-path-stx mod-path]
+                                               [mode phase]))
+           s)
+         (define/syntax-parse maybe-require-submod
+           ((make-syntax-introducer) (format-id #f "maybe-require-submod")))
+         (syntax-local-lift-module-end-declaration
+          #`(begin
+              (define-syntax-parser maybe-require-submod
+                [(_)
+                 (when (module-declared? (convert-relative-module-path '(from-editor #,mod-path)) #t)
+                   (syntax-local-lift-module-end-declaration
+                    #'(~require (for-editor (for-meta #,phase (from-editor #,mod-path))))))
+                 #'(begin)])
+              (maybe-require-submod)))))
+     #'(require body ...)]))
+
 ;; Since the editor submodule is a language detail, we want
 ;; a dedicated for-editor require subform.
 (begin-for-syntax
@@ -106,12 +133,14 @@
       (λ (stx)
         (syntax-parse stx
           [(_ name ...)
-           (for/fold ([import '()]
-                      [impot-source '()])
+           (for/fold ([i-list '()]
+                      [is-list '()])
                      ([n (in-list (attribute name))])
-             (define-values (i is) (expand-import n))
-             (values (append i import)
-                     (append is import-source)))])))))
+             ;; XXX This NEEDS a proper from-editor implementation.
+             (define-values (i is)
+               (expand-import #`(submod #,n editor)))
+             (values (append i i-list)
+                     (append is is-list)))])))))
 
 (define-syntax from-editor (from-editor-struct))
 
@@ -182,22 +211,24 @@
 (define-syntax-parameter defstate-parameter
   (syntax-parser
     [(_ stx who)
-     (raise-syntax-error #'who "Use outside of define-editor is an error" this-syntax)]))
+     (raise-syntax-error (syntax->datum #'who) "Use outside of define-editor is an error" this-syntax)]))
 
 (define-syntax define-elaborate
   (syntax-parser
     [de:defelaborate
-     (raise-syntax-error this-syntax "Use outside of define-editor is an error" this-syntax)]))
+     (raise-syntax-error 'define-elaborate "Use outside of define-editor is an error" this-syntax)]))
 
 (define-syntax (define-state stx)
   (syntax-parse stx
     [x:defstate
-     #`(defstate-parameter #,stx define-state)]))
+     (quasisyntax/loc stx
+       (defstate-parameter #,stx define-state))]))
 
 (define-syntax (define-public-state stx)
   (syntax-parse stx
     [x:defpubstate
-     #`(defstate-parameter #,stx define-public-state)]))
+     (quasisyntax/loc stx
+       (defstate-parameter #,stx define-public-state))]))
 
 ;; We don't want to get editor classes when
 ;; deserializing new editors.
