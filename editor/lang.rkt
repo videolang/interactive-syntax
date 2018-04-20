@@ -1,7 +1,8 @@
 #lang racket/base
 
 (provide (all-defined-out)
-         (for-syntax current-editor-base-lang))
+         (for-syntax current-editor-base-lang
+                     current-editor-collection))
 
 (require racket/class
          racket/serialize
@@ -36,7 +37,8 @@
 ;; as part of the lang, we want to use racket/base to bootstrap
 ;; that language.
 (define-for-syntax current-editor-base-lang (make-parameter 'editor))
-;(define-for-syntax current-editor-base-lang (make-parameter 'racket/base))
+;; TODO, should be a publicly facing lang file.
+(define-for-syntax current-editor-collection (make-parameter 'editor/lang))
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer))
 
@@ -261,7 +263,7 @@
                                    `(,(current-editor-base-lang)
                                      racket/class
                                      racket/serialize
-                                     editor/lang))
+                                     ,(current-editor-collection)))
      #:with marked-supclass (editor-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor-syntax-introduce #'(plain-state ...))
      (define dd?* (syntax-e #'dd?))
@@ -416,7 +418,7 @@
                                    `(,(current-editor-base-lang)
                                      racket/class
                                      racket/serialize
-                                     editor/lang))
+                                     ,(current-editor-collection)))
      #`(begin
          (begin-for-syntax
            (let ()

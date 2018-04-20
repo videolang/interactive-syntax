@@ -33,7 +33,8 @@
 ;;  its base lang needs to be something more like racket/base
 ;;  rather than editor
 (begin-for-syntax
-  (current-editor-base-lang 'racket/base))
+  (current-editor-base-lang 'racket/base)
+  (current-editor-collection "lang.rkt"))
 
 (begin-for-editor
   (define text-size-dc
@@ -60,6 +61,8 @@
     (error 'merge "TODO"))
   (define/public (on-event event x y)
     (void))
+  (define/public (description)
+    "TODO")
   (define/public (set-context c)
     (set! context c))
   (define/public (get-context)
