@@ -17,7 +17,8 @@
 (define editor-context<$>
   (interface ()
     resized
-    recounted))
+    recounted
+    alert))
 
 (define editor<$>
   (interface*

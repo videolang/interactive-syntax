@@ -62,7 +62,7 @@
   (define/public (on-event event x y)
     (void))
   (define/public (description)
-    "TODO")
+    "Empty Editor")
   (define/public (set-context c)
     (set! context c))
   (define/public (get-context)
