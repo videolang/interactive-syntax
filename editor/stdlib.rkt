@@ -1,6 +1,7 @@
 #lang racket/base
 
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (for-editor (all-defined-out)))
 
 (require "lang.rkt"
          (for-editor "context.rkt"
