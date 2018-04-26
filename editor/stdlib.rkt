@@ -1,8 +1,5 @@
 #lang racket/base
 
-(provide (all-defined-out)
-         (for-editor (all-defined-out)))
-
 (require "lang.rkt"
          (for-editor "context.rkt"
                      racket/match
@@ -29,6 +26,9 @@
          (for-syntax racket/base
                      racket/syntax
                      syntax/parse))
+
+(provide (all-defined-out)
+         (for-editor (all-defined-out)))
 
 ;; Because this module is part of the editor language,
 ;;  its base lang needs to be something more like racket/base

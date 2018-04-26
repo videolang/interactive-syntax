@@ -92,6 +92,18 @@
               (maybe-require-submod)))))
      #'(require body ...)]))
 
+;; We also want all-from-out to respect `from-editor`.
+(define-syntax ~all-from-out
+  (make-provide-pre-transformer
+   (λ (stx mode)
+     (syntax-parse stx
+       [(_ paths ...)
+        #:with (expanded-paths ...) (for/list ([i (in-list (attribute paths))])
+                                      (pre-expand-export i mode))
+        #'(all-from-out expanded-paths ...)]))))
+
+(define-syntax provide-key #'provide-key)
+
 ;; Since the editor submodule is a language detail, we want
 ;; a dedicated for-editor require subform.
 (begin-for-syntax
@@ -112,16 +124,19 @@
       (λ (stx mode)
         (syntax-parse stx
           [(_ name ...)
+           #:with (marked-name ...) (editor-syntax-introduce #'(name ...))
            (syntax-local-lift-module-end-declaration
             #`(editor-submod
-               (provide name ...)))
-           #'(for-editor name ...)])))
+               (provide marked-name ...)))
+           #'(for-editor provide-key name ...)])))
     #:property prop:provide-transformer
     (λ (str)
       (λ (stx mode)
         (syntax-parse stx
-          [(_ name ...)
-           '()])))))
+          [(_ (~literal provide-key) name ...)
+           '()]
+          [else
+           (raise-syntax-error 'for-editor "Not a provide sub-form" stx)])))))
 
 (define-syntax for-editor (for-editor-struct))
 
@@ -142,7 +157,15 @@
              (define-values (i is)
                (expand-import #`(submod #,n editor)))
              (values (append i i-list)
-                     (append is is-list)))])))))
+                     (append is is-list)))])))
+    #:property prop:provide-pre-transformer
+    (λ (str)
+      (λ (stx mode)
+        (syntax-parse stx
+          [(_ name)
+           #'(submod name editor)]
+          [(_ name ...)
+           #'(combine-out (submod name editor) ...)])))))
 
 (define-syntax from-editor (from-editor-struct))
 
