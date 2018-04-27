@@ -120,8 +120,8 @@
   (class snip-class%
     (inherit set-classname)
     (super-new)
-    (set-classname (~s '((lib "context.rkt" "editor")
-                         (lib "context-text.rkt" "editor"))))))
+    (set-classname (~s '((lib "context.rkt" "editor" "private")
+                         (lib "context-text.rkt" "editor" "private"))))))
 
 (define editor-snip-class (new editor-snip-class%))
 
