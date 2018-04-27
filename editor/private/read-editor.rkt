@@ -9,7 +9,7 @@
          syntax/srcloc
          syntax/readerr
          syntax-color/racket-lexer
-         (for-template "../lang.rkt"))
+         (for-template "lang.rkt"))
 
 (define paren-table
   (hash "(" ")"

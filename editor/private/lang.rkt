@@ -8,9 +8,11 @@
          racket/serialize
          racket/stxparam
          racket/splicing
+         racket/match
          syntax/location
          syntax/parse/define
          (for-syntax racket/base
+                     racket/list
                      racket/match
                      racket/function
                      racket/require-transform
@@ -37,7 +39,6 @@
 ;; as part of the lang, we want to use racket/base to bootstrap
 ;; that language.
 (define-for-syntax current-editor-base-lang (make-parameter 'editor))
-;; TODO, should be a publicly facing lang file.
 (define-for-syntax current-editor-collection (make-parameter 'editor/lang))
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer))
@@ -69,28 +70,41 @@
 
 ;; ===================================================================================================
 
+;; Expand for-editor to a recognized module path
+;; editor-module-path? -> module-path?
+(define-for-syntax (expand-editorpath path)
+  (match path
+    [`(for-editor (submod ,subpath ...))
+     `(submod ,@subpath editor)]
+    [`(for-editor ,mod)
+     `(submod ,mod editor)]
+    [_ path]))
+
 ;; We want to require edit-time code into the modules editor submod.
 (define-syntax (~require stx)
   (syntax-parse stx
     [(_ body ...)
-     (for ([i (in-list (attribute body))])
-       (define-values (imports import-sources) (expand-import i))
-       (for ([s (in-list import-sources)])
-         (match-define (struct* import-source ([mod-path-stx mod-path]
-                                               [mode phase]))
-           s)
-         (define/syntax-parse maybe-require-submod
-           ((make-syntax-introducer) (format-id #f "maybe-require-submod")))
-         (syntax-local-lift-module-end-declaration
-          #`(begin
-              (define-syntax-parser maybe-require-submod
-                [(_)
-                 (when (module-declared? (convert-relative-module-path '(from-editor #,mod-path)) #t)
-                   (syntax-local-lift-module-end-declaration
-                    #'(~require (for-editor (for-meta #,phase (from-editor #,mod-path))))))
-                 #'(begin)])
-              (maybe-require-submod)))))
-     #'(require body ...)]))
+     (define/syntax-parse (maybe-reqs ...)
+       (append*
+        (for/list ([i (in-list (attribute body))])
+          (define-values (imports import-sources) (expand-import i))
+          (for/list ([s (in-list import-sources)])
+            (match-define (struct* import-source ([mod-path-stx mod-path]
+                                                  [mode phase]))
+              s)
+            (define/syntax-parse maybe-require-submod
+              ((make-syntax-introducer) (format-id #f "maybe-require-submod")))
+            #`(begin
+                (define-syntax-parser maybe-require-submod
+                  [(_)
+                   (when (module-declared?
+                          (convert-relative-module-path (expand-editorpath '(for-editor #,mod-path)))
+                          #t)
+                     #'(~require (for-editor (for-meta #,phase (from-editor #,mod-path)))))
+                   #'(begin)])
+                (maybe-require-submod))))))
+     #'(begin (require body ...)
+              maybe-reqs ...)]))
 
 ;; We also want all-from-out to respect `from-editor`.
 (define-syntax ~all-from-out
@@ -155,7 +169,7 @@
                      ([n (in-list (attribute name))])
              ;; XXX This NEEDS a proper from-editor implementation.
              (define-values (i is)
-               (expand-import #`(submod #,n editor)))
+               (expand-import (datum->syntax stx `(submod ,n editor))))
              (values (append i i-list)
                      (append is is-list)))])))
     #:property prop:provide-pre-transformer
@@ -163,9 +177,11 @@
       (λ (stx mode)
         (syntax-parse stx
           [(_ name)
-           #'(submod name editor)]
+           (datum->syntax stx `(submod ,#'name editor))]
           [(_ name ...)
-           #'(combine-out (submod name editor) ...)])))))
+           #:with (subnames ...) (for/list ([i (in-list (attribute name))])
+                                   (datum->syntax stx `(submod i editor)))
+           #`(combine-out subnames ...)])))))
 
 (define-syntax from-editor (from-editor-struct))
 
@@ -236,7 +252,8 @@
 (define-syntax-parameter defstate-parameter
   (syntax-parser
     [(_ stx who)
-     (raise-syntax-error (syntax->datum #'who) "Use outside of define-editor is an error" this-syntax)]))
+     (raise-syntax-error
+      (syntax->datum #'who) "Use outside of define-editor is an error" this-syntax)]))
 
 (define-syntax define-elaborate
   (syntax-parser
@@ -290,7 +307,8 @@
      #:with marked-supclass (editor-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor-syntax-introduce #'(plain-state ...))
      (define dd?* (syntax-e #'dd?))
-     (unless (or (not dd?*) (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
+     (unless (or (not dd?*)
+                 (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
      (define serialize-method (gensym 'serialize))
      (define deserialize-method (gensym 'deserialize))
