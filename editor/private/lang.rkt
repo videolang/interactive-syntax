@@ -97,11 +97,11 @@
             #`(begin
                 (define-syntax-parser maybe-require-submod
                   [(_)
-                   (when (module-declared?
+                   (if (module-declared?
                           (convert-relative-module-path (expand-editorpath '(for-editor #,mod-path)))
                           #t)
-                     #'(~require (for-editor (for-meta #,phase (from-editor #,mod-path)))))
-                   #'(begin)])
+                     #'(~require (for-editor (for-meta #,phase (from-editor #,mod-path))))
+                     #'(begin))])
                 (maybe-require-submod))))))
      #'(begin (require body ...)
               maybe-reqs ...)]))
