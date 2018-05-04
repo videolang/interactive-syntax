@@ -1,6 +1,6 @@
 #lang racket/base
-
 (require "lang.rkt"
+         "editor.rkt"
          (for-editor "context.rkt"
                      racket/match
                      racket/set
@@ -35,7 +35,7 @@
 ;;  rather than editor
 (begin-for-syntax
   (current-editor-base-lang 'racket/base)
-  (current-editor-collection "lang.rkt"))
+  (current-editor-collection "editor.rkt"))
 
 (begin-for-editor
   (define text-size-dc

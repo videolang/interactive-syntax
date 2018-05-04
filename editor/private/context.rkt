@@ -4,6 +4,7 @@
          (rename-out [editor-snip-class snip-class]))
 
 (require "lang.rkt"
+         "editor.rkt"
          racket/contract/base
          racket/class
          racket/gui/base
