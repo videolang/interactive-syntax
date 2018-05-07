@@ -37,8 +37,8 @@
 ;; Because we use lang in building the stdlib, which is exported
 ;; as part of the lang, we want to use racket/base to bootstrap
 ;; that language.
-(define-for-syntax current-editor-base-lang (make-parameter 'editor))
-(define-for-syntax current-editor-collection (make-parameter 'editor/lang))
+(define-for-syntax current-editor-lang (make-parameter 'editor/lang))
+(define-for-syntax current-editor-base (make-parameter 'editor/base))
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer))
 
@@ -191,7 +191,7 @@
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
-     #:with baselang (editor-syntax-introduce (datum->syntax stx (current-editor-base-lang)))
+     #:with baselang (editor-syntax-introduce (datum->syntax stx (current-editor-lang)))
      #:with (marked-code ...) (editor-syntax-introduce #'(code ...))
      (syntax/loc stx
        (editor-submod

@@ -34,8 +34,8 @@
 ;;  its base lang needs to be something more like racket/base
 ;;  rather than editor
 (begin-for-syntax
-  (current-editor-base-lang 'racket/base)
-  (current-editor-collection "editor.rkt"))
+  (current-editor-lang 'racket/base)
+  (current-editor-base "editor.rkt"))
 
 (begin-for-editor
   (define text-size-dc

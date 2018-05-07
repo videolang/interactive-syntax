@@ -2,8 +2,15 @@
 
 (require "private/lang.rkt"
          "private/stdlib.rkt"
+         "private/editor.rkt"
+         (for-syntax racket/base
+                     "private/lang.rkt")
          (for-editor "private/lang.rkt"
                      (from-editor "private/stdlib.rkt")))
+
+(begin-for-syntax
+  (current-editor-lang 'racket/base)
+  (current-editor-base "editor.rkt"))
 
 (provide (~all-from-out "private/stdlib.rkt")
          (for-editor (~all-from-out (from-editor "private/stdlib.rkt")))
