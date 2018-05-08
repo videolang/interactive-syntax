@@ -75,7 +75,7 @@
      #`(module* editor racket/base
          (require racket/serialize
                   racket/class)
-         #,@(map syntax-local-introduce (reverse (submod-data-required the-submod-data)))
+         #,@(map syntax-local-introduce (reverse (submod-data-maybe the-submod-data)))
          #,@(map syntax-local-introduce (reverse (submod-data-required the-submod-data))))]))
 
 ;; ===================================================================================================
