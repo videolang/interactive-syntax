@@ -79,6 +79,17 @@
      `(submod ,mod editor)]
     [_ path]))
 
+;; Test to see if the given submodule exists.
+;; If it does, then require it, otherwise `(begin)`.
+;; Must only be used at top/module level.
+(define-syntax-parser maybe-require-submod
+  [(_ phase mod-path)
+   (if (module-declared?
+        (convert-relative-module-path (expand-editorpath `(for-editor ,(syntax->datum #'mod-path))))
+        #t)
+       #'(~require (for-editor (for-meta phase (from-editor mod-path))))
+       #'(begin))])
+
 ;; We want to require edit-time code into the modules editor submod.
 (define-syntax (~require stx)
   (syntax-parse stx
@@ -91,17 +102,7 @@
             (match-define (struct* import-source ([mod-path-stx mod-path]
                                                   [mode phase]))
               s)
-            (define/syntax-parse maybe-require-submod
-              ((make-syntax-introducer) (format-id #f "maybe-require-submod")))
-            #`(begin
-                (define-syntax-parser maybe-require-submod
-                  [(_)
-                   (if (module-declared?
-                          (convert-relative-module-path (expand-editorpath '(for-editor #,mod-path)))
-                          #t)
-                     #'(~require (for-editor (for-meta #,phase (from-editor #,mod-path))))
-                     #'(begin))])
-                (maybe-require-submod))))))
+            #`(maybe-require-submod #,phase #,mod-path)))))
      #'(begin (require body ...)
               maybe-reqs ...)]))
 
