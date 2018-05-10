@@ -37,8 +37,8 @@
 ;; Because we use lang in building the stdlib, which is exported
 ;; as part of the lang, we want to use racket/base to bootstrap
 ;; that language.
-(define-for-syntax current-editor-lang (make-parameter 'editor/lang))
-(define-for-syntax current-editor-base (make-parameter 'editor/base))
+(define-syntax-parameter current-editor-lang 'editor/lang)
+(define-syntax-parameter current-editor-base 'editor/base)
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer))
 
@@ -46,20 +46,21 @@
 ;; Note that this box is newly instantiated for every module
 ;; that defines new editor types.
 (begin-for-syntax
-  (struct submod-data (required
-                       maybe)
+  (struct submod-data (forms
+                       lifted)
     #:transparent
     #:mutable)
-  (define the-submod-data (submod-data '() '()))
+  (define the-submod-data (submod-data '() #f))
   (define (add-syntax-to-editor! stx
                                  #:required? [req? #t])
-    (define existing ((if req? submod-data-required submod-data-maybe)
-                      the-submod-data))
-    (when (null? (submod-data-required the-submod-data))
+    (define existing (submod-data-forms the-submod-data))
+    (when (and (not (submod-data-lifted the-submod-data)) req?)
       (syntax-local-lift-module-end-declaration
-       #'(define-editor-submodule)))
-    ((if req? set-submod-data-required! set-submod-data-maybe!)
-     the-submod-data (append (reverse (syntax->list stx)) existing))))
+       #`(define-editor-submodule
+           #,(syntax-parameter-value #'current-editor-base)
+           #,(syntax-parameter-value #'current-editor-lang)))
+      (set-submod-data-lifted! the-submod-data #t))
+    (set-submod-data-forms! the-submod-data (append (reverse (syntax->list stx)) existing))))
 
 (define-syntax (editor-submod stx)
   (syntax-parse stx
@@ -71,12 +72,13 @@
 
 (define-syntax (define-editor-submodule stx)
   (syntax-parse stx
-    [(_)
+    [(_ base lang)
      #`(module* editor racket/base
-         (require racket/serialize
+         (require base
+                  lang
+                  racket/serialize
                   racket/class)
-         #,@(map syntax-local-introduce (reverse (submod-data-maybe the-submod-data)))
-         #,@(map syntax-local-introduce (reverse (submod-data-required the-submod-data))))]))
+         #,@(map syntax-local-introduce (reverse (submod-data-forms the-submod-data))))]))
 
 ;; ===================================================================================================
 
@@ -103,6 +105,7 @@
 
 ;; We want to require edit-time code into the modules editor submod.
 (define-syntax (~require stx)
+  ;(printf "req:~s~n" stx)
   (syntax-parse stx
     [(_ body ...)
      (define/syntax-parse (maybe-reqs ...)
@@ -114,6 +117,7 @@
                                                   [mode phase]))
               s)
             #`(maybe-require-submod #,phase #,mod-path)))))
+     ;(printf "mreq:~s~n" #'(maybe-reqs ...))
      #'(begin (require body ...)
               maybe-reqs ...)]))
 
@@ -203,7 +207,8 @@
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
-     #:with baselang (editor-syntax-introduce (datum->syntax stx (current-editor-lang)))
+     #:with baselang (editor-syntax-introduce
+                      (datum->syntax stx (syntax-parameter-value #'current-editor-lang)))
      #:with (marked-code ...) (editor-syntax-introduce #'(code ...))
      (syntax/loc stx
        (editor-submod

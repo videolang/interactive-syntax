@@ -108,10 +108,10 @@
      #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
      #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
      #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
-                                   `(,(current-editor-lang)
+                                   `(,(syntax-parameter-value #'current-editor-lang)
                                      racket/class
                                      racket/serialize
-                                     ,(current-editor-base)))
+                                     ,(syntax-parameter-value #'current-editor-base)))
      #:with marked-supclass (editor-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor-syntax-introduce #'(plain-state ...))
      (define dd?* (syntax-e #'dd?))
@@ -264,10 +264,10 @@
      #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
      #:with (marked-mixins ...) (editor-syntax-introduce #'(mixins ...))
      #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
-                                   `(,(current-editor-lang)
+                                   `(,(syntax-parameter-value #'current-editor-lang)
                                      racket/class
                                      racket/serialize
-                                     ,(current-editor-base)))
+                                     ,(syntax-parameter-value #'current-editor-base)))
      #`(begin
          (begin-for-syntax
            (let ()
