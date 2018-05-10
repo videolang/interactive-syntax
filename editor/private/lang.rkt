@@ -207,12 +207,13 @@
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
-     #:with baselang (editor-syntax-introduce
-                      (datum->syntax stx (syntax-parameter-value #'current-editor-lang)))
+     #:with (base+lang ...) (map (compose editor-syntax-introduce (curry datum->syntax stx))
+                                 `(,(syntax-parameter-value #'current-editor-lang)
+                                   ,(syntax-parameter-value #'current-editor-base)))
      #:with (marked-code ...) (editor-syntax-introduce #'(code ...))
      (syntax/loc stx
        (editor-submod
-        (require baselang)
+        (require base+lang ...)
         marked-code ...))]))
 
 (define-syntax (define-for-editor stx)

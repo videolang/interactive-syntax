@@ -13,4 +13,5 @@
                        (from-editor "base.rkt")))
   
   (provide (all-from-out "base.rkt")
-           (for-editor (~all-from-out (from-editor "base.rkt")))))
+           (for-editor (~all-from-out (from-editor "base.rkt")))
+           (all-from-out racket/base)))
