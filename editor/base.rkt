@@ -1,5 +1,5 @@
-#lang racket/base
-
+;#lang racket/base
+(module base racket/base (#%plain-module-begin
 (require "private/lang.rkt"
          racket/splicing
          (for-syntax racket/base))
@@ -23,3 +23,4 @@
            from-editor
            (rename-out [~require require]
                        [~all-from-out all-from-out])))
+))

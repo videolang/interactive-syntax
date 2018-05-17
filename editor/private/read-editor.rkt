@@ -9,7 +9,8 @@
          syntax/srcloc
          syntax/readerr
          syntax-color/racket-lexer
-         (for-template "lang.rkt"))
+         "editor.rkt"
+         (for-template "editor.rkt"))
 
 (define paren-table
   (hash "(" ")"
@@ -35,7 +36,8 @@
 (define editor-finish "ditor")
 (define editor-str (string-append "#e" "ditor"))
 
-(define (make-editor-readtable #:readtable [base-readtable (current-readtable)])
+(define (make-editor-readtable #:readtable [base-readtable (current-readtable)]
+                               #:outer-scope [outer-scope #f])
   (define read-editor
     (λ (ch port src line col pos)
       (define next (peek-string (string-length editor-finish) 0 port))
@@ -50,8 +52,11 @@
                (raise-read-error "bad syntax" src line col pos span))
              (define the-editor (read-syntax/recursive src port))
              (define stx (build-source-location-syntax (make-srcloc src line col pos span)))
-             (quasisyntax/loc stx
-               (#%editor #,the-elaborator #,the-editor))]
+             (define inner-scope (make-syntax-introducer))
+             (outer-scope
+              (inner-scope
+               (quasisyntax/loc stx
+                 (#%editor #,the-elaborator #,the-editor))))]
             [else
              (define-values (in out) (make-pipe))
              (write-string "#e" out)

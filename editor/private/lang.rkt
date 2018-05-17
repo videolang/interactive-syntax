@@ -129,7 +129,7 @@
      (syntax-parse stx
        [(_ paths ...)
         #:with (expanded-paths ...) (for/list ([i (in-list (attribute paths))])
-                                      (pre-expand-export i mode))
+                                      (editor-syntax-introduce (pre-expand-export i mode)))
         ;(printf "afo-post: ~s~n" #'(expanded-paths ...))
         #'(all-from-out expanded-paths ...)]))))
 
@@ -145,11 +145,9 @@
         (syntax-parse stx
           [(_ name ...)
            #:with (marked-name ...) (editor-syntax-introduce #'(name ...) 'add)
-           #:with r/b (editor-syntax-introduce (format-id stx "racket/base"))
-           (syntax-local-lift-module-end-declaration
-            #`(editor-submod
-               (require r/b marked-name ...)))])
-        (values '() '())))
+           #:with r/b (editor-syntax-introduce (datum->syntax stx (syntax-parameter-value #'current-editor-lang)))
+           (add-syntax-to-editor! (syntax-local-introduce #'((require r/b marked-name ...))))
+           (values '() '())])))
     #:property prop:provide-pre-transformer
     (λ (str)
       (λ (stx mode)
@@ -157,9 +155,7 @@
           [(_ name ...)
            #:with (marked-name ...) (editor-syntax-introduce #'(name ...) 'add)
            ;(printf "for-editor: ~s~n" stx)
-           (syntax-local-lift-module-end-declaration
-            #`(editor-submod
-               (provide marked-name ...)))
+           (add-syntax-to-editor! (syntax-local-introduce #'((provide marked-name ...))))
            #'(for-editor provide-key name ...)])))
     #:property prop:provide-transformer
     (λ (str)
@@ -187,7 +183,7 @@
                      ([n (in-list (attribute name))])
              ;; XXX This NEEDS a proper from-editor implementation.
              (define-values (i is)
-               (expand-import (datum->syntax stx `(submod ,n editor))))
+               (expand-import (datum->syntax stx (expand-editorpath n))))
              (values (append i i-list)
                      (append is is-list)))])))
     #:property prop:provide-pre-transformer

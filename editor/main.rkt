@@ -6,11 +6,22 @@
                        [e:read-syntax read-syntax]
                        [e:get-info get-info]))
   (require syntax/module-reader
+           syntax/parse
            "private/read-editor.rkt")
 
   (define ((wrap-reader t) . args)
-    (parameterize ([current-readtable (make-editor-readtable)])
-      (apply t args)))
+    (define outer-scope (make-syntax-introducer #t))
+    (parameterize ([current-readtable (make-editor-readtable #:outer-scope outer-scope)])
+      (define stx (apply t args))
+      (if (syntax? stx)
+          (syntax-parse stx
+            [(module name lang (mod-beg body ...))
+             (outer-scope
+              #`(module name lang
+                  (mod-beg
+                   #,(outer-scope #'(#%require (only editor/base)))
+                   body ...)))])
+          stx)))
 
   (define-values (e:read e:read-syntax e:get-info)
     (make-meta-reader

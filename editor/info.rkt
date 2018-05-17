@@ -1,6 +1,6 @@
 #lang info
 (define collection "editor")
-(define deps '("base"
+(define deps '(("base" "6.3")
                "syntax-color-lib"
                "draw-lib"
                "gui-lib"
