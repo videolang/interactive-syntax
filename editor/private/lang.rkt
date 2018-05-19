@@ -191,9 +191,13 @@
                       [is-list '()])
                      ([n (in-list (attribute name))])
              ;; XXX This NEEDS a proper from-editor implementation.
-             (define-values (i is)
+             (define-values (imports is)
                (expand-import (expand-editorpath #`(from-editor #,n))))
-             (values (append i i-list)
+             (define new-imports
+               (for/list ([i (in-list imports)])
+                 (struct-copy import i
+                              [local-id (format-id stx "~a" (import-local-id i))])))
+             (values (append new-imports i-list)
                      (append is is-list)))])))
     #:property prop:provide-pre-transformer
     (λ (str)
