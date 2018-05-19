@@ -86,10 +86,18 @@
 ;; editor-module-path? -> module-path?
 (define-for-syntax (expand-editorpath path)
   (match path
-    [`(for-editor (submod ,subpath ...))
+    [`(from-editor (submod ,subpath ...))
      `(submod ,@subpath editor)]
-    [`(for-editor ,mod)
+    [`(from-editor ,mod)
      `(submod ,mod editor)]
+    [(? syntax?)
+     (syntax-parse path
+       #:literals (from-editor submod)
+       [(from-editor mod)
+        #'(submod mod editor)]
+       [(from-editor (submod subpath ...))
+        #'(submod subpath ... editor)]
+       [_ path])]
     [_ path]))
 
 ;; Test to see if the given submodule exists.
@@ -97,11 +105,12 @@
 ;; Must only be used at top/module level.
 (define-syntax-parser maybe-require-submod
   [(_ phase mod-path)
-   (if (module-declared?
-        (convert-relative-module-path (expand-editorpath `(for-editor ,(syntax->datum #'mod-path))))
+   (when (module-declared?
+        (convert-relative-module-path (expand-editorpath `(from-editor ,(syntax->datum #'mod-path))))
         #t)
-       #'(~require (for-editor (for-meta phase (from-editor mod-path))))
-       #'(begin))])
+     (add-syntax-to-editor! (syntax-local-introduce #'((~require (for-meta phase (from-editor mod-path)))))
+                            #:required? #f))
+   #'(begin)])
 
 ;; We want to require edit-time code into the modules editor submod.
 (define-syntax (~require stx)
@@ -183,7 +192,7 @@
                      ([n (in-list (attribute name))])
              ;; XXX This NEEDS a proper from-editor implementation.
              (define-values (i is)
-               (expand-import (datum->syntax stx (expand-editorpath n))))
+               (expand-import (expand-editorpath #`(from-editor #,n))))
              (values (append i i-list)
                      (append is is-list)))])))
     #:property prop:provide-pre-transformer
