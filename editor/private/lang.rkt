@@ -108,8 +108,9 @@
    (when (module-declared?
         (convert-relative-module-path (expand-editorpath `(from-editor ,(syntax->datum #'mod-path))))
         #t)
-     (add-syntax-to-editor! (syntax-local-introduce #'((~require (for-meta phase (from-editor mod-path)))))
-                            #:required? #f))
+     (add-syntax-to-editor!
+      (syntax-local-introduce #'((~require (for-meta phase (from-editor mod-path)))))
+      #:required? #f))
    #'(begin)])
 
 ;; We want to require edit-time code into the modules editor submod.
@@ -154,7 +155,8 @@
         (syntax-parse stx
           [(_ name ...)
            #:with (marked-name ...) (editor-syntax-introduce #'(name ...) 'add)
-           #:with r/b (editor-syntax-introduce (datum->syntax stx (syntax-parameter-value #'current-editor-lang)))
+           #:with r/b (editor-syntax-introduce
+                       (datum->syntax stx (syntax-parameter-value #'current-editor-lang)))
            (add-syntax-to-editor! (syntax-local-introduce #'((require r/b marked-name ...))))
            (values '() '())])))
     #:property prop:provide-pre-transformer

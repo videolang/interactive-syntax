@@ -36,7 +36,13 @@
           (define s (open-output-bytes))
           (send bit save-file s 'png)
           (get-output-bytes s)]
-         [else default]))])
+         [else default]))]
+    [prop:equal+hash
+     (list (λ (this other rec)
+             (equal? (serialize this)
+                     (serialize other)))
+           (λ (this rec) (equal-hash-code this))
+           (λ (this req) (equal-secondary-hash-code this)))])
    partial-extent
    (get-extent (->m real? real? (values real? real? real? real? real? real?)))
    (resize (->m real? real? any/c))

@@ -236,19 +236,71 @@
       (send parent add-child this)))
 
   (begin-for-editor
+    ;; An interface for widgets that can be resized, like a maximized window.
     (define stretchable<$>
       (interface ()
+        ;; Get's the minimum possible extent for this widget.
+        ;; The input arguments are (x, y) coordinates. They are the coordinates 
+        ;; where the widget will be drawn.
+        ;; A return value of (0, 0) means the window can have no size.
         (get-min-extent (->m real? real? (values real? real?)))
+        ;; Like get-min-extent, but for maximum possible widget size.
+        ;; A return value of (+inf.0, +inf.0) means the window has no
+        ;; maximum size.
         (get-max-extent (->m real? real? (values real? real?)))
-        (draw-stretched (->m (is-a?/c dc<%>) real? real? real? real? any)))))
+        ;; A specialized draw function to render the widget at a specific size.
+        ;; The dc<%> is the context that its being drawn onto.
+        ;; The remaining `real?`s are the (x, y) values to place the widget,
+        ;; as well as the (w, h) of the widget drawing. (These values are
+        ;; expected to be between the minimum and maximum extent for the widget)
+        (draw-stretched (->m (is-a?/c dc<%>) real? real? real? real? any))))
 
-  (begin-for-editor
+    ;; A focusable widget is one that directly can take focus on the screen.
+    ;; Such as a button/text box/etc.
+    (define focus<$>
+      (interface ()
+        ;; Returns #t if the current widget has focus, #f otherwise.
+        (has-focus? (->m boolean?))
+        ;; Manually sets the focus for the widget.
+        (set-focus (->m boolean? any))
+        ;; A more automatic way to set focus based on certain events.
+        ;; The widget is responsible for notifying the parent when it takes focus.
+        (on-event (->m (is-a?/c event%) real? real? any))))
+
+    ;; A parent can be any type of widget that contains children.
+    ;; Such as a list-block$$. This interface assumes that there is some
+    ;; sort of order for the `next-child-focus` and `previous-child-focus`,
+    ;; but not particular semantic meaning is otherwise required
     (define parent<$>
       (interface ()
+        ;; Adds a new child to the collection
         (add-child (->m (is-a?/c editor<$>) any))
+        ;; Remove an existing child from the collection
         (remove-child (->m (is-a?/c editor<$>) any))
-        (resized-child (->m (is-a?/c editor<$>) any)))))
+        ;; Call (generally from a child) when they have been resized.
+        ;; This gives the parent a chance to adjust its other children.
+        (resized-child (->m (is-a?/c editor<$>) any))
+        ;; Sets the given child as the editor's current focus.
+        ;; Such as a highlighted button or current text field.
+        ;; Returns #f if no existing child could be (possibly transitively)
+        ;; found.
+        (set-child-focus (->*m () ((or/c (is-a?/c editor<$>) #f)) boolean?))
+        ;; Like set-child-focus, but does not inform the child of its focus change.
+        ;; To be called by the child itself.
+        ;; As a side effect, all other children loose focus.
+        (child-focus-changed (->m (or (is-a?/c editor<$>) #f) any))
+        ;; Move focus to the next child (button/text field) that can have focus.
+        ;; This operation is also transitive accross parents.
+        ;; If #:wrap is true and when there is no next child, than the widget wraps around and
+        ;; focuses on the first child.
+        ;; If #:wrap is false, then no child gets focus.
+        ;; Returns the child that got focus, #f otherwise.
+        (next-child-focus (->*m () (#:wrap boolean?) (or/c (is-a?/c editor<$>) #f)))
+        ;; Like next-child-focus, but goes to the previous focusable child instead.
+        (previous-child-focus (->*m () (#:wrap boolean?) (or/c (is-a?/c editor<$>) #f))))))
 
+  ;; Generic list collection, used by other editors such as vertical-block$
+  ;; and horizontal-block$.
   (define-editor-mixin list-block$$
     #:interfaces (parent<$> stretchable<$>)
     (inherit/super get-extent)
@@ -261,23 +313,86 @@
     (define x-draw ixd)
     (define y-draw iyd)
     (define-state editor-list '())
+    (define-state focus #f)
     (super-new)
     (define/public (add-child editor)
-      (set! editor-list (append editor-list (list (list editor (is-a? editor stretchable<$>)))))
+      (set! editor-list (append editor-list (list editor)))
       (send editor register-parent this)
       (resized-child editor))
     (define/public (remove-child editor)
       (when (empty? editor-list)
-        (error 'remove-editor "List widget already emtpy"))
+        (error 'remove-editor "List widget already empty"))
       (define index (index-of editor-list editor))
       (send editor register-parent #f)
-      (set! editor-list (remf editor-list (λ (i)
-                                            (equal? (car i) editor))))
+      (set! editor-list (remq editor editor-list))
       (resized-child editor))
     (define/public (resized-child child)
       (match-define-values (_ w h _ _ _ _) (get-child-extents (send this get-x) (send this get-y)))
       (send this resize w h)
       (send this set-count (length editor-list)))
+    (define/public (child-focus-changed child)
+      (when (send this get-parent)
+        (send (send this get-parent) child-focus-changed this))
+      (for/list ([i (in-list editor-list)]
+                 #:when (not (eq? i child)))
+        (when (is-a? i parent<$>)
+          (send i set-child-focus #f))
+        (when (is-a? i focus<$>)
+          (send i set-focus #t))))
+    (define/public (set-child-focus [child #f])
+      (define ret
+        (for/fold ([child child]
+                   #:result (not child))
+                  ([i (in-list editor-list)]
+                   [index (in-naturals)])
+          (define maybe-child
+            (and (is-a? i parent<$>)
+                 (send i set-child-focus child)))
+          (cond [maybe-child
+                 (set! focus index)
+                 #f]
+                [(eq? child i)
+                 (set! focus index)
+                 (send child set-focus #t)
+                 #f]
+                [(is-a? i focus<$>)
+                 (send i set-focus #f)
+                 child]
+                [else child])))
+      ret)
+    (define/public (next-child-focus #:wrap [wrap? #t])
+      (define start (or focus 0))
+      ;; If direct child has focus, switch it off.
+      (define start-editor (and (not (empty? editor-list))
+                                (list-ref editor-list start)))
+      (when (and start-editor (is-a? start-editor focus<$>))
+        (send start-editor set-focus #f))
+      ;; Update focus
+      (let loop ([i start]
+                 [looped-back? #f])
+        (cond
+          [(and looped-back? (= (add1 start) i)) #f]
+          [((length editor-list) . <= . i)
+           (cond
+             [(empty? editor-list) #f]
+             [wrap? (loop 0 #t)]
+             [else #f])]
+          [else
+           (define editor-i (list-ref editor-list i))
+           (cond
+             [(is-a? editor-i parent<$>)
+              (or (send editor-i next-child-focus #:wrap #f)
+                  (loop (add1 i) looped-back?))]
+             [(and (is-a? editor-i focus<$>)
+                   (or (not (= i start))
+                       looped-back?))
+              (set! focus i)
+              (send editor-i set-focus #t)
+              editor-i]
+             [else (loop (add1 i) looped-back?)])])))
+    (define/public (previous-child-focus #:wrap [wrap? #t])
+      (define start (or focus (length editor-list)))
+      (error "TODO"))
     (define/public (get-min-extent x y)
       (error "TODO"))
     (define/public (get-max-extent x y)
@@ -297,7 +412,7 @@
         (cond
           [(and stretchable? (is-a? i stretchable<$>))
            (define-values (w* h*)
-             (send (car i) get-max-extent x y))
+             (send i get-max-extent x y))
            (values (cons (list w* h*) res)
                    (x-extent w w*)
                    (y-extent h h*)
@@ -305,7 +420,7 @@
                    (y-draw y h*))]
           [else
            (define-values (w* h* l t r b)
-             (send (car i) get-extent x y))
+             (send i get-extent x y))
            (values (cons (list w* h* l t r b) res)
                    (x-extent w w*)
                    (y-extent h h*)
@@ -319,7 +434,7 @@
                  [e (in-list extents)])
         (define w (first e))
         (define h (second e))
-        (send (car i) draw dc x y)
+        (send i draw dc x y)
         (values (x-draw x w)
                 (y-draw y h)))
       (void))
@@ -327,8 +442,11 @@
       (send this draw dc x y))
     (define/override (on-event event x y)
       (super on-event event x y)
-      (for/list ([i (in-list editor-list)])
-        (send (car i) on-event event 0 0))))
+      (cond [(and (is-a? event key-event%)
+                  (eq? #\tab (send event get-key-code)))
+             (next-child-focus)]
+            [else (for/list ([i (in-list editor-list)])
+                    (send i on-event event 0 0))])))
 
   (define-editor vertical-block$ (list-block$$ widget$)
     (super-new [x-extent max]
@@ -433,7 +551,28 @@
            (set! bottom-padding b)
            (super resize-content (+ content-width l r) (+ content-height t b)))))
 
-  (define-editor button$ (signaler$$ (padding$$ widget$))
+    (define-editor-mixin focus$$
+    #:interfaces (focus<$>)
+    (super-new)
+    (define-state focus? #f)
+    (define mouse-state 'up)
+    (define/public (has-focus?)
+      focus?)
+    (define/public (set-focus f)
+      (set! focus? f))
+    (define/override (on-event event x y)
+      (super on-event event x y)
+      (cond
+        [(is-a? event mouse-event%)
+         (define in-button? (send this in-bounds? event))
+         (match (send event get-event-type)
+           ['left-down
+            (set! focus? in-button?)
+            (when (and focus? (send this get-parent))
+              (send (send this get-parent) child-focus-changed this))]
+           [_ (void)])])))
+
+  (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
     (super-new)
     (init [(il label) #f])
     (define mouse-state 'up)
@@ -441,6 +580,9 @@
     (define-state up-color "Silver")
     (define-state hover-color "DarkGray")
     (define-state down-color "DimGray")
+    (define/override (set-focus f)
+      (super set-focus f)
+      (set! mouse-state (if f 'hover 'up)))
     (define/override (on-event event x y)
       (super on-event event x y)
       (cond
@@ -517,21 +659,6 @@
     (define (set-state! s)
       (set! state s)))
 
-  (define-editor-mixin focus$$
-    (super-new)
-    (define-state focus? #f)
-    (define mouse-state 'up)
-    (define/public (has-focus?)
-      focus?)
-    (define/override (on-event event x y)
-      (super on-event event x y)
-      (cond
-        [(is-a? event mouse-event%)
-         (define in-button? (send this in-bounds? event))
-         (match (send event get-event-type)
-           ['left-down (set! focus? in-button?)]
-           [_ (void)])])))
-
   (define-editor field$ (focus$$ (text$$ (padding$$ widget$)))
     #:interfaces (stretchable<$>)
     (super-new)
@@ -555,7 +682,7 @@
         (match-define-values (w h) (send this get-content-extent))
         (define-values (pl pt pr pb) (send this get-padding))
         (define-values (ml mt mr mb) (send this get-margin))
-        (send dc draw-line (+ pr cx) (+ y pt) (+ pr cx) (+ y h))))
+        (send dc draw-line (+ x pr cx) (+ y pt) (+ x pr cx) (+ y h))))
     (define/public (draw-stretched dc x y w h)
       (draw dc x y))
     (define/override (on-event event x y)
