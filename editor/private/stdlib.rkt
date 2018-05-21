@@ -21,6 +21,8 @@
                        racket/serialize
                        racket/contract/base
                        racket/string
+                       file/convertible
+                       racket/math
                        (except-in racket/gui/base
                                   editor-snip%
                                   editor-canvas%))
@@ -40,6 +42,40 @@
            (for-editor (all-defined-out)))
 
   (begin-for-editor
+    (define editor<$>
+      (interface*
+       ()
+       ([prop:convertible
+         (λ (this format default)
+           (case format
+             [(png-bytes)
+              (define-values (w* h* l t r b) (send this get-extent 0 0))
+              (define w (exact-ceiling (max w* 1)))
+              (define h (exact-ceiling (max h* 1)))
+              (define bit (make-object bitmap% w h))
+              (send this draw (new bitmap-dc% [bitmap bit]) 0 0)
+              (define s (open-output-bytes))
+              (send bit save-file s 'png)
+              (get-output-bytes s)]
+             [else default]))]
+        [prop:equal+hash
+         (list (λ (this other rec)
+                 (equal? (serialize this)
+                         (serialize other)))
+               (λ (this rec) (equal-hash-code this))
+               (λ (this req) (equal-secondary-hash-code this)))])
+       partial-extent
+       (get-extent (->m real? real? (values real? real? real? real? real? real?)))
+       (resize (->m real? real? any/c))
+       (draw (->m (is-a?/c dc<%>) real? real? void?))
+       (get-count (->m integer?))
+       split
+       merge
+       (on-event (->m (is-a?/c event%) real? real? any))
+       (set-context (->m (is-a?/c editor-context<$>) void?))
+       (get-context (->m (or/c #f (is-a?/c editor-context<$>))))))
+
+    ;; DC used internally for measuring text size.
     (define text-size-dc
       (new bitmap-dc% [bitmap (make-object bitmap% 1 1)])))
 

@@ -40,7 +40,7 @@
 (define-syntax-parameter current-editor-lang 'editor/lang)
 (define-syntax-parameter current-editor-base 'editor/base)
 
-(define-for-syntax editor-syntax-introduce (make-syntax-introducer))
+(define-for-syntax editor-syntax-introduce (make-syntax-introducer #t))
 
 ;; Creates a box for storing submodule syntax pieces.
 ;; Note that this box is newly instantiated for every module
