@@ -22,7 +22,7 @@
     (new label$ [parent this]
          [text "Select Editor"])
 
-    (init-field result-channel
+    (init-field result-box
                 frame)
 
     (define mod-row (new horizontal-block$ [parent this]))
@@ -41,9 +41,9 @@
     (new button$ [parent confirm-row]
          [label (new label$ [text "OK"])]
          [callback (λ (b event)
-                     (async-channel-put result-channel
-                                        (cons (send mod-name get-text)
-                                              (send editor-name get-text)))
+                     (set-box! result-box
+                               (cons (send mod-name get-text)
+                                     (send editor-name get-text)))
                      (send this show #f)
                      (send frame show #f))])
 
@@ -52,18 +52,17 @@
 
   (begin-for-editor
     (provide get-module)
-    (define (get-module)
-      (define res (make-async-channel))
-      (define f (new gui:frame% [label "Test"]))
+    (define (get-module [parent #f])
+      (define res (box #f))
+      (define f (new gui:dialog% [parent parent]
+                     [label "Editor Selector"]))
       (define p (new picker$
-                     [result-channel res]
+                     [result-box res]
                      [frame f]))
       (new editor-canvas% [parent f]
            [editor p])
       (send f show #t)
-      (thread
-       (λ ()
-         (displayln (async-channel-get res))))))
+      (unbox res)))
 
   (define insert-button
     (list "Insert Editor"
@@ -71,5 +70,8 @@
                        #:height (toolbar-icon-height))
           (λ (this)
             (define get-module (dynamic-require (from-editor (quote-module-path)) 'get-module))
-            (get-module))
+            (define text (send this get-definitions-text))
+            (define the-editor (get-module this))
+            (when the-editor
+              (send text insert (car the-editor))))
           #f)))
