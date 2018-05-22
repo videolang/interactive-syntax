@@ -17,14 +17,15 @@
 
 (define editor-context<$>
   (interface ()
-    resized
-    recounted
-    alert))
+    resize
+    recount
+    alert
+    show))
 
 ;; ===================================================================================================
 
 (define editor-canvas%
-  (class canvas%
+  (class* canvas% (editor-context<$>)
     (init-field editor)
     (match-define-values (width height _ _ _ _)
       (send editor get-extent 0 0))
@@ -38,6 +39,13 @@
                                    (send editor get-extent (send editor get-x) (send editor get-y)))
                                  (send this min-width (exact-ceiling width))
                                  (send this min-height (exact-ceiling height)))])
+    (send editor set-context this)
+    (define/public (resize . _)
+      (log-error "TODO"))
+    (define/public (recount . _)
+      (log-error "TODO"))
+    (define/public (alert . _)
+      (log-error "TODO"))
     (define/override (on-event event)
       (send editor on-event event 0 0)
       (send this refresh))

@@ -38,7 +38,7 @@
 ;; as part of the lang, we want to use racket/base to bootstrap
 ;; that language.
 (define-syntax-parameter current-editor-lang 'editor/lang)
-(define-syntax-parameter current-editor-base 'editor/base)
+(define-syntax-parameter current-editor-base '(submod editor/base editor))
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer #t))
 

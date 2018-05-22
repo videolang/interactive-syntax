@@ -223,7 +223,7 @@
       (define c (send this get-context))
       (set! count c)
       (when c
-        (send c recounted)))
+        (send c recount)))
     (define/override (draw dc x y)
       (set-pos! x y)
       (define old-pen (send dc get-pen))
@@ -246,7 +246,7 @@
       (set! content-height h)
       (define c (send this get-context))
       (when c
-        (send c resized))
+        (send c resize))
       (when parent
         (send parent resized-child this)))
     (define/override (get-extent x y)
@@ -610,7 +610,9 @@
 
   (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
     (super-new)
-    (init [(il label) #f])
+    (init [(il label) #f]
+          [(cb callback) (λ (b e) (void))])
+    (define callback cb)
     (define mouse-state 'up)
     (define-state label #f)
     (define-state up-color "Silver")
@@ -634,7 +636,9 @@
               (if in-button?
                   (set! mouse-state 'hover)
                   (set! mouse-state 'up))
-              (send this signal this))]
+              (define control-event (new control-event% [event-type 'button]))
+              (callback this control-event)
+              (send this signal control-event))]
            ['motion
             (match mouse-state
               [(or 'up 'hover)
@@ -753,4 +757,10 @@
                                           char
                                           (substring text caret)))
               (set! caret (add1 caret))]
-             [_ (void)]))]))))
+             [_ (void)]))])))
+
+  (define-editor window$ vertical-block$
+    (inherit get-context)
+    (super-new)
+    (define/public (show [show? #t])
+      (send (get-context) show show?))))
