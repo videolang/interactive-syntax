@@ -184,6 +184,14 @@
 ;; editor components from another module.
 (begin-for-syntax
   (struct from-editor-struct ()
+    #:property prop:procedure
+    (λ (f stx)
+      (syntax-parse stx
+        [(_ mod)
+         #'(let ([m mod])
+             (match m
+               [`(submod ,x ,rest (... ...)) `(submod ,x ,@rest editor)]
+               [x `(submod ,x editor)]))]))
     #:property prop:require-transformer
     (λ (str)
       (λ (stx)

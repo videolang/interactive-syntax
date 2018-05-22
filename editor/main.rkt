@@ -36,7 +36,6 @@
            [(color-lexer) lex-editor]
            [(definitions-text-surrogate) 'editor/private/surrogate]
            [(drracket:toolbar-buttons)
-            (define toggle-button
-              (dynamic-require 'editor/private/surrogate 'toggle-button))
-            (list toggle-button)]
+            (list (dynamic-require 'editor/private/surrogate 'toggle-button)
+                  (dynamic-require 'editor/private/editselect 'insert-button))]
            [else (defproc key default)]))))))

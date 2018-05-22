@@ -29,8 +29,8 @@
       (inner filename 'text))))
 
 (define editor-icon
-  (record-icon #:color "red"
-               #:height (toolbar-icon-height)))
+  (fast-forward-icon #:color "green"
+                     #:height (toolbar-icon-height)))
 
 (define toggle-button
   (list "Update Editors"
