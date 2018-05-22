@@ -8,7 +8,8 @@
 (splicing-syntax-parameterize ([current-editor-lang "../lang.rkt"]
                                [current-editor-base '(submod "../base.rkt" editor)])
   (begin-for-editor) ; <--- TODO...WHY!!!
-  (require racket/class
+  (require syntax/location
+           racket/class
            racket/serialize
            images/icons/style
            images/icons/control
@@ -50,6 +51,7 @@
     (define editor-name (new field$ [parent editor-row])))
 
   (begin-for-editor
+    (provide get-module)
     (define (get-module)
       (define res (make-async-channel))
       (define f (new gui:frame% [label "Test"]))
@@ -68,5 +70,6 @@
           (record-icon #:color "red"
                        #:height (toolbar-icon-height))
           (λ (this)
-            (error "TODO"))
+            (define get-module (dynamic-require (from-editor (quote-module-path)) 'get-module))
+            (get-module))
           #f)))
