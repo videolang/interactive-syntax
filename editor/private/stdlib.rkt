@@ -699,7 +699,7 @@
     (define (set-state! s)
       (set! state s)))
 
-  (define-editor field$ (focus$$ (text$$ (padding$$ widget$)))
+  (define-editor field$ (signaler$$ (focus$$ (text$$ (padding$$ widget$))))
     #:interfaces (stretchable<$>)
     (super-new)
     (send this set-background "white")

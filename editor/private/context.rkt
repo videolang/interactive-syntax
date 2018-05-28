@@ -5,9 +5,12 @@
 
 (require "lang.rkt"
          "editor.rkt"
+         "read-editor.rkt"
+         (prefix-in base: racket/base)
          racket/contract/base
          racket/class
          racket/gui/base
+         racket/port
          file/convertible
          racket/match
          racket/list
@@ -103,7 +106,15 @@
     (inherit set-classname)
     (super-new)
     (set-classname (~s '((lib "context.rkt" "editor" "private")
-                         (lib "context-text.rkt" "editor" "private"))))))
+                         (lib "context-text.rkt" "editor" "private"))))
+    (define/override (read f)
+      (define text (send f get-bytes))
+      (match-define `(#%editor ,_ ,the-editor)
+        (with-input-from-string (bytes->string/utf-8 text)
+          (λ ()
+            (parameterize ([current-readtable (make-editor-readtable)])
+              (base:read)))))
+      (new editor-snip% [editor (deserialize the-editor)]))))
 
 (define editor-snip-class (new editor-snip-class%))
 

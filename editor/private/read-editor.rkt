@@ -37,42 +37,42 @@
 (define editor-str (string-append "#e" "ditor"))
 
 (define (make-editor-readtable #:readtable [base-readtable (current-readtable)]
-                               #:outer-scope [outer-scope #f])
-  (define read-editor
-    (λ (ch port src line col pos)
-      (define next (peek-string (string-length editor-finish) 0 port))
-      (cond [(equal? next "ditor")
-             (read-string (string-length editor-finish) port)
-             (define span (add1 (string-length editor-str)))
-             (define next (peek-char port))
-             (unless (open-paren-char? (peek-char port))
-               (raise-read-error "bad syntax" src line col pos span))
-             (define the-elaborator (read-syntax/recursive src port))
-             (unless (open-paren-char? (peek-char port))
-               (raise-read-error "bad syntax" src line col pos span))
-             (define the-editor (read-syntax/recursive src port))
-             (define stx (build-source-location-syntax (make-srcloc src line col pos span)))
-             (define inner-scope (make-syntax-introducer))
-             (outer-scope
-              (inner-scope
-               (quasisyntax/loc stx
-                 (#%editor #,the-elaborator #,the-editor))))]
-            [else
-             (define-values (in out) (make-pipe))
-             (write-string "#e" out)
-             (close-output-port out)
-             (port-count-lines! in)
-             (set-port-next-location! in line col pos)
-             (with-handlers ([exn:fail:read?
-                              (λ (e)
-                                (raise-read-error
-                                 "bad syntax"
-                                 src
-                                 line
-                                 col
-                                 pos
-                                 (srcloc-span (first (exn:fail:read-srclocs e)))))])
-               (read-syntax/recursive src (input-port-append #f in port) #f base-readtable))])))
+                               #:outer-scope [user-outer-scope #f])
+  (define outer-scope (or user-outer-scope (make-syntax-introducer #t)))
+  (define (read-editor ch port src line col pos)
+    (define next (peek-string (string-length editor-finish) 0 port))
+    (cond [(equal? next "ditor")
+           (read-string (string-length editor-finish) port)
+           (define span (add1 (string-length editor-str)))
+           (define next (peek-char port))
+           (unless (open-paren-char? (peek-char port))
+             (raise-read-error "bad syntax" src line col pos span))
+           (define the-elaborator (read-syntax/recursive src port))
+           (unless (open-paren-char? (peek-char port))
+             (raise-read-error "bad syntax" src line col pos span))
+           (define the-editor (read-syntax/recursive src port))
+           (define stx (build-source-location-syntax (make-srcloc src line col pos span)))
+           (define inner-scope (make-syntax-introducer))
+           (outer-scope
+            (inner-scope
+             (quasisyntax/loc stx
+               (#%editor #,the-elaborator #,the-editor))))]
+          [else
+           (define-values (in out) (make-pipe))
+           (write-string "#e" out)
+           (close-output-port out)
+           (port-count-lines! in)
+           (set-port-next-location! in line col pos)
+           (with-handlers ([exn:fail:read?
+                            (λ (e)
+                              (raise-read-error
+                               "bad syntax"
+                               src
+                               line
+                               col
+                               pos
+                               (srcloc-span (first (exn:fail:read-srclocs e)))))])
+             (read-syntax/recursive src (input-port-append #f in port) #f base-readtable))]))
   (make-readtable base-readtable
                   #\e
                   'dispatch-macro
