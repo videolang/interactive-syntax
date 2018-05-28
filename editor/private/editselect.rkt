@@ -9,8 +9,10 @@
                                [current-editor-base '(submod "../base.rkt" editor)])
   (begin-for-editor) ; <--- TODO...WHY!!!
   (require syntax/location
+           "context.rkt"
            racket/class
            racket/serialize
+           racket/port
            images/icons/style
            images/icons/control
            (for-editor "context.rkt"
@@ -72,6 +74,14 @@
             (define get-module (dynamic-require (from-editor (quote-module-path)) 'get-module))
             (define text (send this get-definitions-text))
             (define the-editor (get-module this))
-            (when the-editor
-              (send text insert (car the-editor))))
+            (when (and the-editor (pair? the-editor))
+              (with-handlers ([exn:fail? (λ (e)
+                                           (error 'editor "Could not load ~a in ~a"
+                                                  (car the-editor)
+                                                  (cdr the-editor)))])
+                (define editor-class$
+                  (dynamic-require (from-editor (with-input-from-string (car the-editor) read))
+                                   (with-input-from-string (cdr the-editor) read)))
+                (send text insert (new editor-snip%
+                                       [editor (new editor-class$)])))))
           #f)))

@@ -79,6 +79,12 @@
       (wsb! d b*))
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
       (send editor draw dc x y))
+    (define/override (on-char dc x y ex ey event)
+      (send editor get-extent x y) ;; TODO, remove this
+      (send editor on-event event x y)
+      (define admin (send this get-admin))
+      (when admin
+        (send admin resized this #t)))
     (define/override (on-event dc x y ex ey event)
       (send editor get-extent x y) ;; TODO, remove this
       (send editor on-event event x y)
@@ -96,7 +102,10 @@
       ;; Disregarding flattened? ...
       (format "#editor~s~s" (editor-binding) (serialize editor)))
     (define/public (read-special src line col pos)
-      `(#%editor ,(editor-binding) ,(serialize editor)))
+      (define editor-datum `(#%editor ,(editor-binding) ,(serialize editor)))
+      (datum->syntax #'#f
+                     editor-datum
+                     (vector src line col pos (string-length (format "~s" editor-datum)))))
     (define/override (write f)
       (define text (string->bytes/utf-8 (get-text 0 0)))
       (send f put text))))
