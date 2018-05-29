@@ -63,7 +63,7 @@
      (raise-syntax-error
       (syntax->datum #'who) "Use outside of define-editor is an error" this-syntax)]))
 
-(define-syntax define-elaborate
+(define-syntax-parameter define-elaborate
   (syntax-parser
     [de:defelaborate
      (raise-syntax-error 'define-elaborate "Use outside of define-editor is an error" this-syntax)]))
@@ -172,7 +172,11 @@
                                               #'(begin
                                                   (define st.marked-name st.body (... ...)))]
                                              [(_ st:defpubstate who)
-                                              #'(field [st.marked-name st.body (... ...)])])])
+                                              #'(field [st.marked-name st.body (... ...)])])]
+                                         [define-elaborate
+                                           (syntax-parser
+                                             [de:defelaborate
+                                              #'(begin)])])
             (define name
               (let ()
                 #,@(for/list ([sm (in-list state-methods)])

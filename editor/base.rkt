@@ -14,7 +14,8 @@
 
   (provide (~all-from-out "private/stdlib.rkt")
            (for-editor (~all-from-out (from-editor "private/stdlib.rkt"))
-                       define-state)
+                       define-state
+                       define-elaborate)
            define-editor
            define-editor-mixin
            begin-for-editor
