@@ -106,7 +106,7 @@
      #:with elaborator-name (format-id stx "~a:elaborate" #'name)
      #:with name-deserialize (format-id stx "~a:deserialize" #'name)
      #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
-     #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
+     #:with (marked-body ...) (editor-syntax-introduce #'(body ...) 'add)
      #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
                                    `(,(syntax-parameter-value #'current-editor-lang)
                                      racket/class
@@ -114,6 +114,9 @@
                                      ,(syntax-parameter-value #'current-editor-base)))
      #:with marked-supclass (editor-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor-syntax-introduce #'(plain-state ...))
+     #;((dynamic-require 'racket/pretty 'pretty-print) (list (attribute elaborator)
+                                                           (attribute elaborator.data)
+                                                           (attribute elaborator.body)))
      (define dd?* (syntax-e #'dd?))
      (unless (or (not dd?*)
                  (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
@@ -264,7 +267,7 @@
              (~optional (~seq #:mixins (mixins ...)) #:defaults ([(mixins 1) '()])))
         ...
         body ...)
-     #:with (marked-body ...) (editor-syntax-introduce #'(body ...))
+     #:with (marked-body ...) (editor-syntax-introduce #'(body ...) 'add)
      #:with (marked-interfaces ...) (editor-syntax-introduce #'(interfaces ...))
      #:with (marked-mixins ...) (editor-syntax-introduce #'(mixins ...))
      #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))

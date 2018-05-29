@@ -76,9 +76,10 @@
             (define the-editor (get-module this))
             (when (and the-editor (pair? the-editor))
               (with-handlers ([exn:fail? (λ (e)
-                                           (error 'editor "Could not load ~a in ~a"
+                                           (error 'editor "Could not load ~a in ~a got ~s"
+                                                  (cdr the-editor)
                                                   (car the-editor)
-                                                  (cdr the-editor)))])
+                                                  e))])
                 (define editor-class$
                   (dynamic-require (from-editor (with-input-from-string (car the-editor) read))
                                    (with-input-from-string (cdr the-editor) read)))
