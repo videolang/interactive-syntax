@@ -140,9 +140,12 @@
 
   (define-editor-mixin signaler$$
     (super-new)
-    (init [(ir receiver) '()])
+    (init [(ir receiver) '()]
+          [(cb callback) (λ (b e) (void))])
     (define-state receivers (mutable-set))
+    (define callback cb)
     (define/public (signal event)
+      (callback this event)
       (for ([r (in-set receivers)])
         (send r signal event)))
     (define/public (register-receiver x)
@@ -610,9 +613,7 @@
 
   (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
     (super-new)
-    (init [(il label) #f]
-          [(cb callback) (λ (b e) (void))])
-    (define callback cb)
+    (init [(il label) #f])
     (define mouse-state 'up)
     (define-state label #f)
     (define-state up-color "Silver")
@@ -637,7 +638,6 @@
                   (set! mouse-state 'hover)
                   (set! mouse-state 'up))
               (define control-event (new control-event% [event-type 'button]))
-              (callback this control-event)
               (send this signal control-event))]
            ['motion
             (match mouse-state

@@ -6,6 +6,7 @@
          racket/splicing
          syntax/location
          racket/serialize
+         syntax/parse/define
          (for-syntax racket/base
                      (submod "lang.rkt" key-submod)
                      racket/serialize
@@ -42,16 +43,37 @@
   (define-member-name elaborator elaborator-key)
   (send editor elaborator))
 
+(define-syntax-parser define-getter
+  [(_ _:id _:id #f)
+   #'(void)]
+  [(_ state:id getter:id #t)
+   #'(define-getter state getter (λ () state))]
+  [(_ _:id getter:id body)
+   #'(define/public getter body)])
+
+(define-syntax-parser define-setter
+  [(_ _:id _:id #f)
+   #'(void)]
+  [(_ state:id setter:id #t)
+   #'(define-setter state setter (λ () state))]
+  [(_ _:id setter:id body)
+   #'(define/public setter body)])
+
 (begin-for-syntax
   (define-syntax-class defelaborate
     #:literals (define-elaborate)
     (pattern (define-elaborate data body ...+)))
   (define-syntax-class defstate
     #:literals (define-state)
-    (pattern (define-state marked-name:id body ...)
+    (pattern (define-state marked-name:id
+               (~alt (~optional (~seq #:persistence persistence))
+                     (~optional (~seq #:getter getter) #:defaults ([getter #'#f]))
+                     (~optional (~seq #:setter setter) #:defaults ([setter #'#f]))
+                     (~once default))
+               ...)
              #:attr name (editor-syntax-introduce (attribute marked-name))
-             #:attr getter (format-id this-syntax "get-~a" #'name)
-             #:attr setter (format-id this-syntax "set-~a!" #'name)))
+             #:attr getter-name (format-id this-syntax "get-~a" #'name)
+             #:attr setter-name (format-id this-syntax "set-~a!" #'name)))
   (define-syntax-class defpubstate
     #:literals (define-public-state)
     (pattern (define-public-state marked-name:id body ...)
@@ -125,7 +147,7 @@
      (define deserialize-method (gensym 'deserialize))
      (define copy-method (gensym 'copy))
      (define elaborator-method (gensym 'elaborator))
-     (define state-methods (for/list ([i (in-list (attribute state.getter))])
+     (define state-methods (for/list ([i (in-list (attribute state.getter-name))])
                              (gensym (syntax->datum i))))
      (define base? (syntax-e (attribute b?)))
      #`(begin
@@ -169,17 +191,20 @@
                                   (λ (other)
                                     (send pattern #,copy-method other))))))))
                   '())
-          (splicing-syntax-parameterize ([defstate-parameter
-                                           (syntax-parser
-                                             [(_ st:defstate who)
-                                              #'(begin
-                                                  (define st.marked-name st.body (... ...)))]
-                                             [(_ st:defpubstate who)
-                                              #'(field [st.marked-name st.body (... ...)])])]
-                                         [define-elaborate
-                                           (syntax-parser
-                                             [de:defelaborate
-                                              #'(begin)])])
+          (splicing-syntax-parameterize
+              ([defstate-parameter
+                 (syntax-parser
+                   [(_ st:defstate who)
+                    #'(begin
+                        (define st.marked-name st.default)
+                        (define-getter st.marked-name st.getter-name st.getter)
+                        (define-setter st.marked-name st.setter-name st.setter))]
+                   [(_ st:defpubstate who)
+                    #'(field [st.marked-name st.body (... ...)])])]
+               [define-elaborate
+                 (syntax-parser
+                   [de:defelaborate
+                    #'(begin)])])
             (define name
               (let ()
                 #,@(for/list ([sm (in-list state-methods)])
@@ -225,7 +250,9 @@
                          #`(void)
                          #`(super #,deserialize-method sup))
                    #,@(for/list ([i (in-list (attribute state.marked-name))])
-                        #`(set! #,i (hash-ref table '#,(syntax->datum i))))
+                        (define key (syntax->datum i))
+                        #`(when (hash-has-key? table '#,key)
+                            (set! #,i (hash-ref table '#,key))))
                    #,@(for/list ([i (in-list (attribute public-state.marked-name))])
                         #`(set! #,i (hash-ref public-table '#,(syntax->datum i)))))
                  (#,(if base? #'public #'override) #,deserialize-method)
