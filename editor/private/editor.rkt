@@ -73,11 +73,7 @@
                ...)
              #:attr name (editor-syntax-introduce (attribute marked-name))
              #:attr getter-name (format-id this-syntax "get-~a" #'name)
-             #:attr setter-name (format-id this-syntax "set-~a!" #'name)))
-  (define-syntax-class defpubstate
-    #:literals (define-public-state)
-    (pattern (define-public-state marked-name:id body ...)
-             #:attr name (editor-syntax-introduce (attribute marked-name)))))
+             #:attr setter-name (format-id this-syntax "set-~a!" #'name))))
 
 (define-syntax-parameter defstate-parameter
   (syntax-parser
@@ -96,12 +92,6 @@
      (quasisyntax/loc stx
        (defstate-parameter #,stx define-state))]))
 
-(define-syntax (define-public-state stx)
-  (syntax-parse stx
-    [x:defpubstate
-     (quasisyntax/loc stx
-       (defstate-parameter #,stx define-public-state))]))
-
 ;; We don't want to get editor classes when
 ;; deserializing new editors.
 (define deserialize-editor-classes?
@@ -119,7 +109,6 @@
         ...
         (~and
          (~seq (~or plain-state:defstate
-                    public-state:defpubstate
                     (~optional elaborator:defelaborate
                                #:defaults ([elaborator.data #'this]
                                            [(elaborator.body 1) (list #'this)]))
@@ -198,9 +187,7 @@
                     #'(begin
                         (define st.marked-name st.default)
                         (define-getter st.marked-name st.getter-name st.getter)
-                        (define-setter st.marked-name st.setter-name st.setter))]
-                   [(_ st:defpubstate who)
-                    #'(field [st.marked-name st.body (... ...)])])]
+                        (define-setter st.marked-name st.setter-name st.setter))])]
                [define-elaborate
                  (syntax-parser
                    [de:defelaborate
@@ -237,24 +224,18 @@
                                  #`(super #,serialize-method))
                            (make-immutable-hash
                             `#,(for/list ([i (in-list (attribute state.marked-name))])
-                                 #`(#,(syntax->datum i) . ,#,i)))
-                           (make-immutable-hash
-                            `#,(for/list ([i (in-list (attribute public-state.marked-name))])
                                  #`(#,(syntax->datum i) . ,#,i)))))
                  (#,(if base? #'public #'override) #,serialize-method)
                  (define (#,deserialize-method data)
                    (define sup (vector-ref data 0))
                    (define table (vector-ref data 1))
-                   (define public-table (vector-ref data 2))
                    #,(if base?
                          #`(void)
                          #`(super #,deserialize-method sup))
                    #,@(for/list ([i (in-list (attribute state.marked-name))])
                         (define key (syntax->datum i))
                         #`(when (hash-has-key? table '#,key)
-                            (set! #,i (hash-ref table '#,key))))
-                   #,@(for/list ([i (in-list (attribute public-state.marked-name))])
-                        #`(set! #,i (hash-ref public-table '#,(syntax->datum i)))))
+                            (set! #,i (hash-ref table '#,key)))))
                  (#,(if base? #'public #'override) #,deserialize-method)
                  (define (#,copy-method other)
                    #,(if base?
@@ -263,8 +244,6 @@
                    #,@(for/list ([i (in-list (attribute state.marked-name))]
                                  [get (in-list state-methods)])
                         #`(set! #,i (send other #,get)))
-                   #,@(for/list ([i (in-list (attribute public-state.marked-name))])
-                        #`(set! #,i (get-field #,i other)))
                    (void))
                  (#,(if base? #'public #'override) #,copy-method)
                  #,@(for/list ([i (in-list (attribute state.marked-name))]
