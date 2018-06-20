@@ -14,6 +14,7 @@
 
   (require "editor.rkt"
            (for-editor "context.rkt"
+                       "event.rkt"
                        racket/match
                        racket/set
                        racket/list
@@ -518,10 +519,10 @@
       (send this draw-child dc x y)))
 
   (define-editor-mixin text$$
+    #:mixins (signaler$$)
     (super-new)
     (init [(internal-font font) normal-control-font]
           [(internal-text text) ""])
-    (define-state text #f)
     (define-state text-width 0)
     (define-state text-height 0)
     (define-state font '())
@@ -539,16 +540,17 @@
                        (send f get-hinting))))
     (define-state scale? #f)
     (send this set-background "white" 'transparent)
-    (define/public (set-text t)
-      (define text-size-str (if (non-empty-string? t) t "   "))
-      (match-define-values (w h _ _)
-        (send text-size-dc get-text-extent text-size-str (send this get-font)))
-      (set! text t)
-      (set! text-width w)
-      (set! text-height h)
-      (send this resize-content text-width text-height))
-    (define/public (get-text)
-      text)
+    (define-state text #f
+      #:setter (λ (t)
+                 (define text-size-str (if (non-empty-string? t) t "   "))
+                 (match-define-values (w h _ _)
+                   (send text-size-dc get-text-extent text-size-str (send this get-font)))
+                 (set! text t)
+                 (set! text-width w)
+                 (set! text-height h)
+                 (send this resize-content text-width text-height)
+                 (send this signal (new text-change-event% [text t])))
+      #:getter #t)
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (l t r b) (send this get-margin))
@@ -556,13 +558,13 @@
       (send dc set-font (send this get-font))
       (send dc draw-text text (+ l x) (+ t y))
       (send dc set-font old-font))
-    (set-text internal-text)
+    (set-text! internal-text)
     (set-font internal-font))
 
   (define-editor label$ (text$$ widget$)
     (super-new)
     (init [(internal-text text) ""])
-    (send this set-text internal-text))
+    (send this set-text! internal-text))
 
   (define-editor-mixin padding$$
     (super-new)
@@ -699,7 +701,7 @@
     (define (set-state! s)
       (set! state s)))
 
-  (define-editor field$ (signaler$$ (focus$$ (text$$ (padding$$ widget$))))
+  (define-editor field$ (focus$$ (text$$ (padding$$ widget$)))
     #:interfaces (stretchable<$>)
     (super-new)
     (send this set-background "white")
@@ -740,7 +742,7 @@
              [(or #\newline #\return)
               (void)]
              [#\backspace
-              (send this set-text (format "~a~a"
+              (send this set-text! (format "~a~a"
                                           (substring text 0 (max 0 (sub1 caret)))
                                           (substring text caret)))
               (set! caret (max 0 (sub1 caret)))]
@@ -752,7 +754,7 @@
                               (substring text (min (length text) (add1 caret)))))
               #;(set! caret (min (sub1 (length text)) caret))]
              [(? char?)
-              (send this set-text (format "~a~a~a"
+              (send this set-text! (format "~a~a~a"
                                           (substring text 0 caret)
                                           char
                                           (substring text caret)))
