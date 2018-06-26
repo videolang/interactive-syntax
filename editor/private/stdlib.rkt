@@ -126,6 +126,13 @@
     (define-state child #f))
 
   (begin-for-editor
+    (define callable<$>
+      (interface* ()
+                  ([prop:procedure
+                    (λ (this . args)
+                      (send/apply this apply args))])
+                  apply))
+  
     (define receiver<$>
       (interface ()
         on-receive
@@ -142,11 +149,17 @@
   (define-editor-mixin signaler$$
     (super-new)
     (init [(ir receiver) '()]
-          [(cb callback) (λ (b e) (void))])
+          [(cb callback) #f])
     (define-state receivers (mutable-set))
-    (define callback cb)
+    (define-state callback cb)
     (define/public (signal event)
-      (callback this event)
+      (match callback
+        [(? procedure?)
+         (callback this event)]
+        [`(,obj ,method)
+         (dynamic-send obj method this event)]
+        [#f (void)]
+        [_ (error 'signaler "Invalid Callback ~a" callback)])
       (for ([r (in-set receivers)])
         (send r signal event)))
     (define/public (register-receiver x)
@@ -347,25 +360,34 @@
     (init [(ixe x-extent)]
           [(iye y-extent)]
           [(ixd x-draw)]
-          [(iyd y-draw)])
+          [(iyd y-draw)]
+          [(ip persistence) #f])
     (define x-extent ixe)
     (define y-extent iye)
     (define x-draw ixd)
     (define y-draw iyd)
-    (define-state editor-list '())
+    (define persistence ip)
+    (define-state editor-list '()
+      #:persistence persistence)
     (define-state focus #f)
     (super-new)
     (define/public (add-child editor)
       (set! editor-list (append editor-list (list editor)))
       (send editor register-parent this)
       (resized-child editor))
-    (define/public (remove-child editor)
+    (define/public (remove-child [editor #f])
       (when (empty? editor-list)
         (error 'remove-editor "List widget already empty"))
-      (define index (index-of editor-list editor))
+      (define index (if editor
+                        (index-of editor-list editor)
+                        (sub1 (length editor-list))))
       (send editor register-parent #f)
       (set! editor-list (remq editor editor-list))
       (resized-child editor))
+    (define/public (count)
+      (length editor-list))
+    (define/public (in-children)
+      (in-list editor-list))
     (define/public (resized-child child)
       (match-define-values (_ w h _ _ _ _) (get-child-extents (send this get-x) (send this get-y)))
       (send this resize w h)
@@ -592,7 +614,7 @@
            (set! bottom-padding b)
            (super resize-content (+ content-width l r) (+ content-height t b)))))
 
-    (define-editor-mixin focus$$
+  (define-editor-mixin focus$$
     #:interfaces (focus<$>)
     (super-new)
     (define-state focus? #f)

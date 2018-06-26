@@ -55,7 +55,7 @@
   [(_ _:id _:id #f)
    #'(void)]
   [(_ state:id setter:id #t)
-   #'(define-setter state setter (λ () state))]
+   #'(define-setter state setter (λ (new-val) (set! state new-val)))]
   [(_ _:id setter:id body)
    #'(define/public setter body)])
 
@@ -66,7 +66,7 @@
   (define-syntax-class defstate
     #:literals (define-state)
     (pattern (define-state marked-name:id
-               (~alt (~optional (~seq #:persistence persistence))
+               (~alt (~optional (~seq #:persistence persistence) #:defaults ([persistence #'#t]))
                      (~optional (~seq #:getter getter) #:defaults ([getter #'#f]))
                      (~optional (~seq #:setter setter) #:defaults ([setter #'#f]))
                      (~once default))
@@ -75,22 +75,15 @@
              #:attr getter-name (format-id this-syntax "get-~a" #'name)
              #:attr setter-name (format-id this-syntax "set-~a!" #'name))))
 
-(define-syntax-parameter defstate-parameter
-  (syntax-parser
-    [(_ stx who)
-     (raise-syntax-error
-      (syntax->datum #'who) "Use outside of define-editor is an error" this-syntax)]))
-
 (define-syntax-parameter define-elaborate
   (syntax-parser
     [de:defelaborate
      (raise-syntax-error 'define-elaborate "Use outside of define-editor is an error" this-syntax)]))
 
-(define-syntax (define-state stx)
-  (syntax-parse stx
+(define-syntax-parameter define-state
+  (syntax-parser
     [x:defstate
-     (quasisyntax/loc stx
-       (defstate-parameter #,stx define-state))]))
+     (raise-syntax-error 'define-state "Use outside of define-editor is an error" this-syntax)]))
 
 ;; We don't want to get editor classes when
 ;; deserializing new editors.
@@ -170,9 +163,9 @@
                      (provide name-deserialize)
                      (define name-deserialize
                        (make-deserialize-info
-                        (λ (sup table public-table)
+                        (λ (sup table)
                           (define this (new name))
-                          (send this #,deserialize-method (vector sup table public-table))
+                          (send this #,deserialize-method (vector sup table))
                           this)
                         (λ ()
                           (define pattern (new name))
@@ -181,9 +174,9 @@
                                     (send pattern #,copy-method other))))))))
                   '())
           (splicing-syntax-parameterize
-              ([defstate-parameter
+              ([define-state
                  (syntax-parser
-                   [(_ st:defstate who)
+                   [st:defstate
                     #'(begin
                         (define st.marked-name st.default)
                         (define-getter st.marked-name st.getter-name st.getter)
@@ -232,10 +225,19 @@
                    #,(if base?
                          #`(void)
                          #`(super #,deserialize-method sup))
-                   #,@(for/list ([i (in-list (attribute state.marked-name))])
+                   #,@(for/list ([i (in-list (attribute state.marked-name))]
+                                 [p? (in-list (attribute state.persistence))])
                         (define key (syntax->datum i))
                         #`(when (hash-has-key? table '#,key)
-                            (set! #,i (hash-ref table '#,key)))))
+                            (define other-val (hash-ref table '#,key))
+                            (define persist?
+                              (let ([p* #,p?])
+                                (case p*
+                                  [(#t) (λ _ #t)]
+                                  [(#f) (λ _ #f)]
+                                  [else p*])))
+                            (when (persist? other-val)
+                              (set! #,i other-val)))))
                  (#,(if base? #'public #'override) #,deserialize-method)
                  (define (#,copy-method other)
                    #,(if base?
