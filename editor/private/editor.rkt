@@ -230,14 +230,11 @@
                         (define key (syntax->datum i))
                         #`(when (hash-has-key? table '#,key)
                             (define other-val (hash-ref table '#,key))
-                            (define persist?
-                              (let ([p* #,p?])
-                                (case p*
-                                  [(#t) (λ _ #t)]
-                                  [(#f) (λ _ #f)]
-                                  [else p*])))
-                            (when (persist? other-val)
-                              (set! #,i other-val)))))
+                            (let ([p* #,p?])
+                              (case p*
+                                [(#t) (set! #,i other-val)]
+                                [(#f) (void)]
+                                [else (set! #,i (p* #,i other-val))])))))
                  (#,(if base? #'public #'override) #,deserialize-method)
                  (define (#,copy-method other)
                    #,(if base?

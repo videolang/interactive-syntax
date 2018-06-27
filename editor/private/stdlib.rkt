@@ -135,16 +135,7 @@
   
     (define receiver<$>
       (interface ()
-        on-receive
-        signal)))
-
-  (define-editor-mixin receiver$$
-    #:interfaces (receiver<$>)
-    (super-new)
-    (define/public (on-receive event)
-      (void))
-    (define/public (signal event)
-      (on-receive event)))
+        receive)))
 
   (define-editor-mixin signaler$$
     (super-new)
@@ -161,7 +152,7 @@
         [#f (void)]
         [_ (error 'signaler "Invalid Callback ~a" callback)])
       (for ([r (in-set receivers)])
-        (send r signal event)))
+        (send r receive event)))
     (define/public (register-receiver x)
       (set-add! receivers x))
     (define/public (unregister-receiver x)
@@ -181,7 +172,10 @@
 
   (define-editor widget$ base$
     (super-new)
-    (init [(internal-parent parent) #f])
+    (init [(internal-parent parent) #f]
+          [(ip persist) #f])
+    (define persist ip)
+    (define/public (get-persistence) persist)
     (define-state x 0)
     (define-state y 0)
     (define/public (get-x)
@@ -357,18 +351,17 @@
   (define-editor-mixin list-block$$
     #:interfaces (parent<$> stretchable<$>)
     (inherit/super get-extent)
+    (inherit get-persistence)
     (init [(ixe x-extent)]
           [(iye y-extent)]
           [(ixd x-draw)]
-          [(iyd y-draw)]
-          [(ip persistence) #f])
+          [(iyd y-draw)])
     (define x-extent ixe)
     (define y-extent iye)
     (define x-draw ixd)
     (define y-draw iyd)
-    (define persistence ip)
     (define-state editor-list '()
-      #:persistence persistence)
+      #:persistence (get-persistence))
     (define-state focus #f)
     (super-new)
     (define/public (add-child editor)
@@ -542,6 +535,7 @@
 
   (define-editor-mixin text$$
     #:mixins (signaler$$)
+    (inherit get-persistence)
     (super-new)
     (init [(internal-font font) normal-control-font]
           [(internal-text text) ""])
@@ -572,7 +566,8 @@
                  (set! text-height h)
                  (send this resize-content text-width text-height)
                  (send this signal (new text-change-event% [text t])))
-      #:getter #t)
+      #:getter #t
+      #:persistence (get-persistence))
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (l t r b) (send this get-margin))
