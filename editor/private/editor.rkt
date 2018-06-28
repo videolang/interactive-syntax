@@ -45,19 +45,21 @@
 
 (define-syntax-parser define-getter
   [(_ _:id _:id #f)
-   #'(void)]
+   (syntax/loc this-syntax (void))]
   [(_ state:id getter:id #t)
-   #'(define-getter state getter (λ () state))]
+   (quasisyntax/loc this-syntax
+     (define-getter state getter #,(syntax/loc this-syntax (λ () state))))]
   [(_ _:id getter:id body)
-   #'(define/public getter body)])
+   (syntax/loc this-syntax (define/public getter body))])
 
 (define-syntax-parser define-setter
   [(_ _:id _:id #f)
-   #'(void)]
+   (syntax/loc this-syntax (void))]
   [(_ state:id setter:id #t)
-   #'(define-setter state setter (λ (new-val) (set! state new-val)))]
+   (quasisyntax/loc this-syntax
+     (define-setter state setter #,(syntax/loc this-syntax (λ (new-val) (set! state new-val)))))]
   [(_ _:id setter:id body)
-   #'(define/public setter body)])
+   (syntax/loc this-syntax (define/public setter body))])
 
 (begin-for-syntax
   (define-syntax-class defelaborate
@@ -166,21 +168,23 @@
                         (λ (sup table)
                           (define this (new name))
                           (send this #,deserialize-method (vector sup table))
+                          (send this on-state-changed)
                           this)
                         (λ ()
                           (define pattern (new name))
                           (values pattern
                                   (λ (other)
-                                    (send pattern #,copy-method other))))))))
+                                    (send pattern #,copy-method other)
+                                    (send pattern on-state-changed))))))))
                   '())
           (splicing-syntax-parameterize
               ([define-state
                  (syntax-parser
                    [st:defstate
-                    #'(begin
-                        (define st.marked-name st.default)
-                        (define-getter st.marked-name st.getter-name st.getter)
-                        (define-setter st.marked-name st.setter-name st.setter))])]
+                    #`(begin
+                        #,(syntax/loc #'st (define st.marked-name st.default))
+                        #,(syntax/loc #'st (define-getter st.marked-name st.getter-name st.getter))
+                        #,(syntax/loc #'st (define-setter st.marked-name st.setter-name st.setter)))])]
                [define-elaborate
                  (syntax-parser
                    [de:defelaborate

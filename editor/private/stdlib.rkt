@@ -40,7 +40,8 @@
            racket/format)
 
   (provide (all-defined-out)
-           (for-editor (all-defined-out)))
+           (for-editor (all-defined-out)
+                       (all-from-out "event.rkt")))
 
   (begin-for-editor
     (define editor<$>
@@ -72,6 +73,7 @@
        (get-count (->m integer?))
        split
        merge
+       (on-state-changed (->m void?))
        (on-event (->m (is-a?/c event%) real? real? any))
        (set-context (->m (is-a?/c editor-context<$>) void?))
        (get-context (->m (or/c #f (is-a?/c editor-context<$>))))))
@@ -99,6 +101,8 @@
       (error 'split "TODO"))
     (define/public (merge . args)
       (error 'merge "TODO"))
+    (define/public (on-state-changed)
+      (void))
     (define/public (on-event event x y)
       (void))
     (define/public (description)
@@ -131,28 +135,27 @@
                   ([prop:procedure
                     (λ (this . args)
                       (send/apply this apply args))])
-                  apply))
+                  apply)))
   
-    (define receiver<$>
-      (interface ()
-        receive)))
-
   (define-editor-mixin signaler$$
+    #:interfaces (signaler<$>)
     (super-new)
     (init [(ir receiver) '()]
           [(cb callback) #f])
     (define-state receivers (mutable-set))
     (define-state callback cb)
     (define/public (signal event)
-      (match callback
-        [(? procedure?)
+      (cond
+        [(procedure? callback)
          (callback this event)]
-        [`(,obj ,method)
-         (dynamic-send obj method this event)]
-        [#f (void)]
-        [_ (error 'signaler "Invalid Callback ~a" callback)])
+        [(is-a? callback receiver<$>)
+         (send callback on-receive this event)]
+        [(pair? callback)
+         (dynamic-send (car callback) (cadr callback) this event)]
+        [(not callback) (void)]
+        [else (error 'signaler "Invalid Callback ~a" callback)])
       (for ([r (in-set receivers)])
-        (send r receive event)))
+        (send r on-receive this event)))
     (define/public (register-receiver x)
       (set-add! receivers x))
     (define/public (unregister-receiver x)
@@ -163,6 +166,16 @@
       [(list? ir)
        (for ([i (in-list ir)])
          (register-receiver i))]))
+
+  (begin-for-editor
+    (define signaler<$>
+      (interface ()
+        [signal (->m any/c void?)]
+        [register-receiver (->m (recursive-contract (is-a?/c receiver<$>)) void?)]
+        [unregister-receiver (->m (recursive-contract (is-a?/c receiver<$>)) void?)]))
+    (define receiver<$>
+      (interface ()
+        (on-receive (->m (is-a?/c signaler<$>) any/c void?)))))
 
   (define-editor tool-tip$ base$
     (super-new))
@@ -558,16 +571,19 @@
     (send this set-background "white" 'transparent)
     (define-state text #f
       #:setter (λ (t)
-                 (define text-size-str (if (non-empty-string? t) t "   "))
-                 (match-define-values (w h _ _)
-                   (send text-size-dc get-text-extent text-size-str (send this get-font)))
-                 (set! text t)
-                 (set! text-width w)
-                 (set! text-height h)
-                 (send this resize-content text-width text-height)
-                 (send this signal (new text-change-event% [text t])))
+                 (internal-set-text! t #t))
       #:getter #t
       #:persistence (get-persistence))
+    (define/private (internal-set-text! t signal?)
+      (define text-size-str (if (non-empty-string? t) t "   "))
+      (match-define-values (w h _ _)
+        (send text-size-dc get-text-extent text-size-str (send this get-font)))
+      (set! text t)
+      (set! text-width w)
+      (set! text-height h)
+      (send this resize-content text-width text-height)
+      (when signal?
+        (send this signal (new text-change-event% [text t]))))
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (l t r b) (send this get-margin))
@@ -575,7 +591,7 @@
       (send dc set-font (send this get-font))
       (send dc draw-text text (+ l x) (+ t y))
       (send dc set-font old-font))
-    (set-text! internal-text)
+    (internal-set-text! internal-text #f)
     (set-font internal-font))
 
   (define-editor label$ (text$$ widget$)
