@@ -189,21 +189,27 @@
           [(ip persist) #f])
     (define persist ip)
     (define/public (get-persistence) persist)
-    (define-state x 0)
-    (define-state y 0)
-    (define/public (get-x)
-      x)
-    (define/public (get-y)
-      y)
+    (define-state x 0
+      #:getter #t
+      #:persistence (get-persistence))
+    (define-state y 0
+      #:getter #t
+      #:persistence (get-persistence))
     (define/private (set-pos! x* y*)
       (set! x x*)
       (set! y y*))
-    (define-state content-width 0)
-    (define-state content-height 0)
-    (define-state top-margin 1)
-    (define-state bottom-margin 1)
-    (define-state left-margin 1)
-    (define-state right-margin 1)
+    (define-state content-width 0
+      #:persistence (get-persistence))
+    (define-state content-height 0
+      #:persistence (get-persistence))
+    (define-state top-margin 1
+      #:persistence (get-persistence))
+    (define-state bottom-margin 1
+      #:persistence (get-persistence))
+    (define-state left-margin 1
+      #:persistence (get-persistence))
+    (define-state right-margin 1
+      #:persistence (get-persistence))
     (define/public (get-margin)
       (values top-margin bottom-margin left-margin right-margin))
     (define/public (set-margin l t r b)
@@ -212,18 +218,19 @@
       (set! top-margin t)
       (set! bottom-margin b)
       (resize (+ content-width l r) (+ content-height t b)))
-    (define-state background '("Gainsboro" solid #f #f #f))
-    (define/public (get-background)
-      (define color
-        (match (first background)
-          [(list r g b a) (make-object color% r g b a)]
-          [str str]))
-      (new brush%
-           [color color]
-           [style (or (second background) 'solid)]
-           [stipple (third background)]
-           ;[gradient (fourth background)]
-           [transformation (fifth background)]))
+    (define-state background '("Gainsboro" solid #f #f #f)
+      #:persistence (get-persistence)
+      #:getter (λ ()
+                 (define color
+                   (match (first background)
+                     [(list r g b a) (make-object color% r g b a)]
+                     [str str]))
+                 (new brush%
+                      [color color]
+                      [style (or (second background) 'solid)]
+                      [stipple (third background)]
+                      ;[gradient (fourth background)]
+                      [transformation (fifth background)])))
     (define/public (set-background brush/color [style #f])
       (define (color->quad c)
         (cond
@@ -239,15 +246,17 @@
                      #f ;(send brush/color get-gradient)
                      (send brush/color get-transformation))]
               [else (list (color->quad brush/color) (or style 'solid) #f #f #f)])))
-    (define-state parent #f)
-    (define-state count 1)
+    (define-state parent #f
+      #:persistence (get-persistence))
+    (define-state count 1
+      #:persistence (get-persistence)
+      #:setter (λ (c)
+                 (define con (send this get-context))
+                 (set! count c)
+                 (when con
+                   (send con recount))))
     (define/override (get-count)
       count)
-    (define/public (set-count c)
-      (define c (send this get-context))
-      (set! count c)
-      (when c
-        (send c recount)))
     (define/override (draw dc x y)
       (set-pos! x y)
       (define old-pen (send dc get-pen))
@@ -292,8 +301,7 @@
       (and (<= x mouse-x (+ x content-width))
            (<= y mouse-y (+ y content-height))))
     (when internal-parent
-      (register-parent internal-parent)
-      (send parent add-child this)))
+      (send internal-parent add-child this)))
 
   (begin-for-editor
     ;; An interface for widgets that can be resized, like a maximized window.
@@ -387,8 +395,9 @@
       (define index (if editor
                         (index-of editor-list editor)
                         (sub1 (length editor-list))))
-      (send editor register-parent #f)
-      (set! editor-list (remq editor editor-list))
+      (define removed-editor (list-ref editor-list index))
+      (send removed-editor register-parent #f)
+      (set! editor-list (remq removed-editor editor-list))
       (resized-child editor))
     (define/public (count)
       (length editor-list))
@@ -397,7 +406,7 @@
     (define/public (resized-child child)
       (match-define-values (_ w h _ _ _ _) (get-child-extents (send this get-x) (send this get-y)))
       (send this resize w h)
-      (send this set-count (length editor-list)))
+      (send this set-count! (length editor-list)))
     (define/public (child-focus-changed child)
       (when (send this get-parent)
         (send (send this get-parent) child-focus-changed this))
@@ -570,20 +579,18 @@
     (define-state scale? #f)
     (send this set-background "white" 'transparent)
     (define-state text #f
-      #:setter (λ (t)
-                 (internal-set-text! t #t))
+      #:setter (λ (t #:signal? [signal? #f])
+                 (define text-size-str (if (non-empty-string? t) t "   "))
+                 (match-define-values (w h _ _)
+                   (send text-size-dc get-text-extent text-size-str (send this get-font)))
+                 (set! text t)
+                 (set! text-width w)
+                 (set! text-height h)
+                 (send this resize-content text-width text-height)
+                 (when signal?
+                   (send this signal (new text-change-event% [text t]))))
       #:getter #t
       #:persistence (get-persistence))
-    (define/private (internal-set-text! t signal?)
-      (define text-size-str (if (non-empty-string? t) t "   "))
-      (match-define-values (w h _ _)
-        (send text-size-dc get-text-extent text-size-str (send this get-font)))
-      (set! text t)
-      (set! text-width w)
-      (set! text-height h)
-      (send this resize-content text-width text-height)
-      (when signal?
-        (send this signal (new text-change-event% [text t]))))
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (l t r b) (send this get-margin))
@@ -591,7 +598,7 @@
       (send dc set-font (send this get-font))
       (send dc draw-text text (+ l x) (+ t y))
       (send dc set-font old-font))
-    (internal-set-text! internal-text #f)
+    (set-text! internal-text)
     (set-font internal-font))
 
   (define-editor label$ (text$$ widget$)
@@ -777,7 +784,8 @@
              [#\backspace
               (send this set-text! (format "~a~a"
                                           (substring text 0 (max 0 (sub1 caret)))
-                                          (substring text caret)))
+                                          (substring text caret))
+                    #:signal? #t)
               (set! caret (max 0 (sub1 caret)))]
              [#\rubout
               (error "TODO")
@@ -790,7 +798,8 @@
               (send this set-text! (format "~a~a~a"
                                           (substring text 0 caret)
                                           char
-                                          (substring text caret)))
+                                          (substring text caret))
+                    #:signal? #t)
               (set! caret (add1 caret))]
              [_ (void)]))])))
 

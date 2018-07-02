@@ -77,12 +77,12 @@
             (define directory (send (send this get-current-tab) get-directory))
             (unless directory
               (error 'editor "Could not determine the current dirrectory"))
-            (define read-path (with-input-from-string (car the-editor) read))
-            (define full-path
-              (if (absolute-path? read-path)
-                  read-path
-                  (build-path directory read-path)))
             (when (and the-editor (pair? the-editor))
+              (define read-path (with-input-from-string (car the-editor) read))
+              (define full-path
+                (if (absolute-path? read-path)
+                    read-path
+                    (build-path directory read-path)))
               (with-handlers ([exn:fail? (λ (e)
                                            (error 'editor "Could not load ~a in ~a got ~s"
                                                   (cdr the-editor)

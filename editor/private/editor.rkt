@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require "lang.rkt"
+         racket/list
          racket/stxparam
          racket/class
          racket/splicing
@@ -147,7 +148,11 @@
            (syntax-parse stx
              [(_ data)
               #'(let ()
-                  (define elaborator.data (deserialize 'data))
+                  (define elaborator.data
+                    (parameterize (#;[deserialize-module-guard
+                                    (λ (mod name)
+                                      (void))])
+                      (deserialize 'data)))
                   elaborator.body ...)]))
          (#,@(if dd?*
                  #`(editor-submod
@@ -219,9 +224,15 @@
                    (vector #,(if base?
                                  #'#f
                                  #`(super #,serialize-method))
-                           (make-immutable-hash
-                            `#,(for/list ([i (in-list (attribute state.marked-name))])
-                                 #`(#,(syntax->datum i) . ,#,i)))))
+                           (let ()
+                             (define state-vars
+                               `((state.marked-name
+                                  ,state.marked-name
+                                  ,state.persistence)
+                                 ...))
+                             (for/hash ([var (in-list state-vars)]
+                                        #:when (third var))
+                               (values (first var) (second var))))))
                  (#,(if base? #'public #'override) #,serialize-method)
                  (define (#,deserialize-method data)
                    (define sup (vector-ref data 0))
