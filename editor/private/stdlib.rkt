@@ -376,11 +376,16 @@
     (init [(ixe x-extent)]
           [(iye y-extent)]
           [(ixd x-draw)]
-          [(iyd y-draw)])
+          [(iyd y-draw)]
+          [(ucs uniform-child-size?) #f])
     (define x-extent ixe)
     (define y-extent iye)
     (define x-draw ixd)
     (define y-draw iyd)
+    (define-state uniform-child-size? ucs
+      #:persistence (get-persistence)
+      #:getter #t
+      #:setter #t)
     (define-state editor-list '()
       #:persistence (get-persistence))
     (define-state focus #f)
@@ -411,11 +416,11 @@
       (when (send this get-parent)
         (send (send this get-parent) child-focus-changed this))
       (for/list ([i (in-list editor-list)]
-                 #:when (not (eq? i child)))
+                 #:unless (eq? i child))
         (when (is-a? i parent<$>)
           (send i set-child-focus #f))
         (when (is-a? i focus<$>)
-          (send i set-focus #t))))
+          (send i set-focus #f))))
     (define/public (set-child-focus [child #f])
       (define ret
         (for/fold ([child child]
@@ -474,7 +479,12 @@
       (error "TODO"))
     (define/public (get-max-extent x y)
       (error "TODO"))
-    (define/public (get-child-extents sx sy #:stretchable? [stretchable? #f])
+    (define/public (get-child-extents sx sy)
+      (if uniform-child-size?
+          (get-uniform-child-extents sx sy uniform-child-size?)
+          (get-fixed-child-extents sx sy)))
+    (define/private (get-fixed-child-extents sx sy
+                                             #:stretchable? [stretchable? #f])
       (define-values (sw sh l t r b) (super get-extent sx sy))
       (for/fold ([res '()]
                  [w 0]
@@ -503,6 +513,28 @@
                    (y-extent h h*)
                    (x-draw x w*)
                    (y-draw y h*))])))
+    (define/private (get-uniform-child-extents sx sy
+                                               [maybe-child-sizes #t])
+      (match-define-values (extents x y l t r b) (get-fixed-child-extents sx sy))
+      (define-values (max-width max-height)
+        (if (list? maybe-child-sizes)
+            (values (first maybe-child-sizes) (second maybe-child-sizes))
+            (for/fold ([max-width 0]
+                       [max-height 0])
+                      ([i (in-list extents)])
+              (values (max max-width (first i))
+                      (max max-height (second i))))))
+      (define-values (modified-extents new-width new-height)
+        (for/fold ([exts '()]
+                   [mw (+ l r)]
+                   [mh (+ t b)]
+                   #:result (values (reverse exts) mw mh))
+                  ([i (in-list extents)])
+          (values (cons (list max-width max-height (third i) (fourth i) (fifth i) (sixth i))
+                        exts)
+                  (x-extent max-width mw)
+                  (y-extent max-height mh))))
+      (values modified-extents new-width new-height l t r b))
     (define/public (draw-child dc x y)
       (match-define-values (extents _ _ l t r b) (get-child-extents x y))
       (for/fold ([x (+ l x)]
