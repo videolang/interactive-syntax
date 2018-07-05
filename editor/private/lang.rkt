@@ -41,6 +41,9 @@
 (define-syntax-parameter current-editor-base '(submod editor/base editor))
 
 (define-for-syntax editor-syntax-introduce (make-syntax-introducer #t))
+(define-for-syntax user-syntax-introduce (make-syntax-introducer #t))
+(define-for-syntax (editor/user-syntax-introduce stx [type 'add])
+  (user-syntax-introduce (editor-syntax-introduce stx type) type))
 
 ;; Creates a box for storing submodule syntax pieces.
 ;; Note that this box is newly instantiated for every module
@@ -139,7 +142,7 @@
      (syntax-parse stx
        [(_ paths ...)
         #:with (expanded-paths ...) (for/list ([i (in-list (attribute paths))])
-                                      (editor-syntax-introduce (pre-expand-export i mode)))
+                                      (editor/user-syntax-introduce (pre-expand-export i mode)))
         ;(printf "afo-post: ~s~n" #'(expanded-paths ...))
         #'(all-from-out expanded-paths ...)]))))
 
@@ -154,7 +157,7 @@
       (λ (stx)
         (syntax-parse stx
           [(_ name ...)
-           #:with (marked-name ...) (editor-syntax-introduce #'(name ...) 'add)
+           #:with (marked-name ...) (editor/user-syntax-introduce #'(name ...) 'add)
            #:with r/b (editor-syntax-introduce
                        (datum->syntax stx (syntax-parameter-value #'current-editor-lang)))
            (add-syntax-to-editor! (syntax-local-introduce #'((require r/b marked-name ...))))
@@ -164,7 +167,7 @@
       (λ (stx mode)
         (syntax-parse stx
           [(_ name ...)
-           #:with (marked-name ...) (editor-syntax-introduce #'(name ...) 'add)
+           #:with (marked-name ...) (editor/user-syntax-introduce #'(name ...) 'add)
            ;(printf "for-editor: ~s~n" stx)
            (add-syntax-to-editor! (syntax-local-introduce #'((provide marked-name ...))))
            #'(for-editor provide-key name ...)])))
@@ -229,7 +232,7 @@
      #:with (base+lang ...) (map (compose editor-syntax-introduce (curry datum->syntax stx))
                                  `(,(syntax-parameter-value #'current-editor-lang)
                                    ,(syntax-parameter-value #'current-editor-base)))
-     #:with (marked-code ...) (editor-syntax-introduce #'(code ...))
+     #:with (marked-code ...) (editor/user-syntax-introduce #'(code ...))
      (syntax/loc stx
        (editor-submod
         (require base+lang ...)

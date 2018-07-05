@@ -15,6 +15,7 @@
            racket/port
            images/icons/style
            images/icons/control
+           (prefix-in gui: racket/gui/base)
            (for-editor "context.rkt"
                        (prefix-in gui: racket/gui/base)
                        racket/async-channel))
@@ -89,8 +90,9 @@
                                                   full-path
                                                   e))])
                 (define editor-class$
-                  (dynamic-require (from-editor full-path)
-                                   (with-input-from-string (cdr the-editor) read)))
+                  (parameterize ([current-namespace (gui:make-gui-namespace)])
+                    (namespace-require (from-editor full-path))
+                    (namespace-variable-value (with-input-from-string (cdr the-editor) read))))
                 (send text insert (new editor-snip%
                                        [editor (new editor-class$)])))))
           #f)))
