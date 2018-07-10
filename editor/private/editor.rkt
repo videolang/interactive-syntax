@@ -30,7 +30,14 @@
 
 (module m->r racket/base
   (provide (all-defined-out))
-  (require racket/path racket/match)
+  (require racket/path
+           racket/match
+           syntax/parse/define
+           syntax/modresolve
+           (for-syntax racket/base))
+  (define-syntax (this-mod-dir stx)
+    #'(modpath->relpath (resolve-module-path-index
+                         (module-path-index-join "here.rkt" #f))))
   (define (modpath->relpath modpath)
     (if (path-string? modpath)
         (path-only modpath)
@@ -40,13 +47,16 @@
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
 (define-syntax-parser #%editor
-  [(_ here (elaborator-binding elaborator-name) body)
-   (parameterize ([current-load-relative-directory
-                   (modpath->relpath (syntax->datum #'here))])
-     (define/syntax-parse elaborator
-       (syntax-local-lift-require (deserialize (syntax->datum #'elaborator-binding))
-                                  (datum->syntax #f (syntax->datum #'elaborator-name))))
-     #'(elaborator here body))])
+  [(_ (elaborator-binding elaborator-name) body)
+   #'(splicing-let-syntax
+         ([this (λ (stx)
+                  (parameterize ([current-load-relative-directory (this-mod-dir)])
+                    (define/syntax-parse elaborator
+                      (syntax-local-lift-require
+                       (deserialize (syntax->datum #'elaborator-binding))
+                       (datum->syntax #f (syntax->datum #'elaborator-name))))
+                    #'(elaborator body)))])
+       (this))])
 
 ;; Returns an identifier that contains
 ;;   the binding for an editor's elaborator.
@@ -157,11 +167,10 @@
                               (set-box! b (cons #'name (unbox b)))))))
                 '())
          (define-syntax-parser elaborator-name
-           [(_ srcloc data)
+           [(_ data)
             #`(let ()
                 (define elaborator.data
-                  (parameterize ([current-load-relative-directory
-                                  (modpath->relpath srcloc)])
+                  (parameterize ([current-load-relative-directory (this-mod-dir)])
                     (deserialize 'data)))
                 elaborator.body ...)])
          (#,@(if dd?*

@@ -56,7 +56,7 @@
            (outer-scope
             (inner-scope
              (quasisyntax/loc stx
-               (#%editor #,src #,the-elaborator #,the-editor))))]
+               (#%editor #,the-elaborator #,the-editor))))]
           [else
            (define-values (in out) (make-pipe))
            (write-string "#e" out)
