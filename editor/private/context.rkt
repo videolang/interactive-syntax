@@ -16,7 +16,8 @@
          racket/list
          racket/serialize
          racket/format
-         racket/math)
+         racket/math
+         racket/path)
 
 (define editor-context<$>
   (interface ()
@@ -68,6 +69,13 @@
     (set-flags (cons 'handles-events (get-flags)))
     (set-snipclass editor-snip-class)
     (send (get-the-snip-class-list) add editor-snip-class)
+    (define/public (get-editor)
+      editor)
+    (define/public (set-editor! e)
+      (set! editor e)
+      (define admin (send this get-admin))
+      (when admin
+        (send admin resized this #t)))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
       (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
       (define (wsb! x y) (when x (set-box! x y)))
@@ -97,10 +105,22 @@
     (define/private (editor-binding)
       (match-define (list binding-mod binding-name)
         (editor->elaborator editor))
-      (list (serialize binding-mod) binding-name))
+      (list (serialize binding-mod #:relative-to (maybe-get-filename)) binding-name))
     (define/override (get-text offset num [flattened? #f])
       ;; Disregarding flattened? ...
-      (format "#editor~s~s" (editor-binding) (serialize editor)))
+      (format "#editor~s~s" (editor-binding) (serialize editor #:relative-to (maybe-get-filename))))
+    (define/private (maybe-get-filename)
+      (define maybe-admin (send this get-admin))
+      (define maybe-filename
+        (cond [maybe-admin
+               (define editor (send maybe-admin get-editor))
+               (define tmp (box #f))
+               (define file (send editor get-filename))
+               (and (not (unbox tmp)) file)]
+              [else #f]))
+      (if (path-string? maybe-filename)
+          (path-only maybe-filename)
+          maybe-filename))
     (define/public (read-special src line col pos)
       (define editor-datum `(#%editor ,(editor-binding) ,(serialize editor)))
       (datum->syntax #'#f

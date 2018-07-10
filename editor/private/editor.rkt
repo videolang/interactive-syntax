@@ -14,6 +14,7 @@
                      racket/function
                      syntax/location
                      racket/syntax
+                     racket/path
                      syntax/parse))
 (provide (all-defined-out)
          (all-from-out "lang.rkt"))
@@ -26,15 +27,26 @@
 ;(define elaborator-key (generate-member-key))
 (define elaborator-key (member-name-key elaborate))
 
+
+(module m->r racket/base
+  (provide (all-defined-out))
+  (require racket/path racket/match)
+  (define (modpath->relpath modpath)
+    (if (path-string? modpath)
+        (path-only modpath)
+        modpath)))
+(require 'm->r (for-syntax 'm->r))
+
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
-(define-syntax (#%editor stx)
-  (syntax-parse stx
-    [(_ (elaborator-binding elaborator-name) body)
+(define-syntax-parser #%editor
+  [(_ here (elaborator-binding elaborator-name) body)
+   (parameterize ([current-load-relative-directory
+                   (modpath->relpath (syntax->datum #'here))])
      (define/syntax-parse elaborator
        (syntax-local-lift-require (deserialize (syntax->datum #'elaborator-binding))
                                   (datum->syntax #f (syntax->datum #'elaborator-name))))
-     #'(elaborator body)]))
+     #'(elaborator here body))])
 
 ;; Returns an identifier that contains
 ;;   the binding for an editor's elaborator.
@@ -144,16 +156,14 @@
                             (when (and b (box? b))
                               (set-box! b (cons #'name (unbox b)))))))
                 '())
-         (define-syntax (elaborator-name stx)
-           (syntax-parse stx
-             [(_ data)
-              #'(let ()
-                  (define elaborator.data
-                    (parameterize (#;[deserialize-module-guard
-                                    (λ (mod name)
-                                      (void))])
-                      (deserialize 'data)))
-                  elaborator.body ...)]))
+         (define-syntax-parser elaborator-name
+           [(_ srcloc data)
+            #`(let ()
+                (define elaborator.data
+                  (parameterize ([current-load-relative-directory
+                                  (modpath->relpath srcloc)])
+                    (deserialize 'data)))
+                elaborator.body ...)])
          (#,@(if dd?*
                  #`(editor-submod
                     (require marked-reqs ...)

@@ -10,12 +10,15 @@
   (begin-for-editor) ; <--- TODO...WHY!!!
   (require syntax/location
            "context.rkt"
+           syntax/parse
+           (prefix-in gui: racket/gui/base)
            racket/class
            racket/serialize
            racket/port
            images/icons/style
            images/icons/control
            (prefix-in gui: racket/gui/base)
+           syntax/modread
            (for-editor "context.rkt"
                        (prefix-in gui: racket/gui/base)
                        racket/async-channel))
@@ -75,24 +78,42 @@
             (define get-module (dynamic-require (from-editor (quote-module-path)) 'get-module))
             (define text (send this get-definitions-text))
             (define the-editor (get-module this))
-            (define directory (send (send this get-current-tab) get-directory))
-            (unless directory
-              (error 'editor "Could not determine the current dirrectory"))
             (when (and the-editor (pair? the-editor))
-              (define read-path (with-input-from-string (car the-editor) read))
-              (define full-path
-                (if (absolute-path? read-path)
-                    read-path
-                    (build-path directory read-path)))
-              (with-handlers ([exn:fail? (λ (e)
-                                           (error 'editor "Could not load ~a in ~a got ~s"
-                                                  (cdr the-editor)
-                                                  full-path
-                                                  e))])
-                (define editor-class$
-                  (parameterize ([current-namespace (gui:make-gui-namespace)])
-                    (namespace-require (from-editor full-path))
-                    (namespace-variable-value (with-input-from-string (cdr the-editor) read))))
-                (send text insert (new editor-snip%
-                                       [editor (new editor-class$)])))))
+              (define editor-class$
+                (cond
+                  [(equal? (car the-editor) "")
+                   (define out (open-output-bytes))
+                   (define mod-text (send text save-port out 'standard))
+                   (define mod-stx
+                     (with-input-from-bytes (get-output-bytes out)
+                       (λ ()
+                         (with-module-reading-parameterization
+                           read-syntax))))
+                   (define mod-name
+                     (syntax-parse mod-stx
+                       [(module name lang body ...)
+                        (attribute name)]))
+                   (parameterize ([current-namespace (gui:make-gui-namespace)])
+                     (eval mod-stx)
+                     (namespace-require (from-editor `',mod-name))
+                     (namespace-variable-value (with-input-from-string (cdr the-editor) read)))]
+                  [else
+                   (define directory (send (send this get-current-tab) get-directory))
+                   (unless directory
+                     (error 'editor "Could not determine the current dirrectory"))
+                   (define read-path (with-input-from-string (car the-editor) read))
+                   (define full-path
+                     (if (absolute-path? read-path)
+                         read-path
+                         (build-path directory read-path)))
+                   (with-handlers ([exn:fail? (λ (e)
+                                                (error 'editor "Could not load ~a in ~a got ~s"
+                                                       (cdr the-editor)
+                                                       full-path
+                                                       e))])
+                     (parameterize ([current-namespace (gui:make-gui-namespace)])
+                       (namespace-require (from-editor full-path))
+                       (namespace-variable-value (with-input-from-string (cdr the-editor) read))))]))
+              (send text insert (new editor-snip%
+                                     [editor (new editor-class$)]))))
           #f)))
