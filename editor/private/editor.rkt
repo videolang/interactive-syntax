@@ -23,8 +23,8 @@
 ;;   this module should access these methods directly.
 (define serial-key (generate-member-key))
 (define deserial-key (generate-member-key))
+(define deserial-binding-key (member-name-key deserialize-binding))
 (define copy-key (generate-member-key))
-;(define elaborator-key (generate-member-key))
 (define elaborator-key (member-name-key elaborate))
 
 
@@ -143,20 +143,20 @@
                                      ,(syntax-parameter-value #'current-editor-base)))
      #:with marked-supclass (editor/user-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor/user-syntax-introduce #'(plain-state ...))
-     #;((dynamic-require 'racket/pretty 'pretty-print) (list (attribute elaborator)
-                                                           (attribute elaborator.data)
-                                                           (attribute elaborator.body)))
+     #:with serialize-method (gensym 'serialize)
+     #:with deserialize-method (gensym 'deserialize)
+     #:with deserialize-binding-method (gensym 'deserialize-binding)
+     #:with copy-method (gensym 'copy)
+     #:with elaborator-method (gensym 'elaborator)
      (define dd?* (syntax-e #'dd?))
      (unless (or (not dd?*)
                  (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
-     (define serialize-method (gensym 'serialize))
-     (define deserialize-method (gensym 'deserialize))
-     (define copy-method (gensym 'copy))
-     (define elaborator-method (gensym 'elaborator))
      (define state-methods (for/list ([i (in-list (attribute state.getter-name))])
                              (gensym (syntax->datum i))))
      (define base? (syntax-e (attribute b?)))
+     (define/syntax-parse public/override
+       (if base? #'public #'override))
      #`(begin
          #,@(if dd?*
                 (list #'(provide elaborator-name)
@@ -178,10 +178,11 @@
                     (require marked-reqs ...)
                     (#%require #,(quote-module-path)))
                  #'(begin))
-          (define-member-name #,serialize-method serial-key)
-          (define-member-name #,deserialize-method deserial-key)
-          (define-member-name #,copy-method copy-key)
-          (define-member-name #,elaborator-method elaborator-key)
+          (define-member-name serialize-method serial-key)
+          (define-member-name deserialize-method deserial-key)
+          (define-member-name deserialize-binding-method deserial-binding-key)
+          (define-member-name copy-method copy-key)
+          (define-member-name elaborator-method elaborator-key)
           #,@(if dd?*
                  (list
                   #'(provide name)
@@ -191,14 +192,14 @@
                        (make-deserialize-info
                         (λ (sup table)
                           (define this (new name))
-                          (send this #,deserialize-method (vector sup table))
+                          (send this deserialize-method (vector sup table))
                           (send this on-state-changed)
                           this)
                         (λ ()
                           (define pattern (new name))
                           (values pattern
                                   (λ (other)
-                                    (send pattern #,copy-method other)
+                                    (send pattern copy-method other)
                                     (send pattern on-state-changed))))))))
                   '())
           (splicing-syntax-parameterize
@@ -206,13 +207,19 @@
                  (syntax-parser
                    [st:defstate
                     #`(begin
-                        #,(syntax/loc #'st (define st.marked-name st.default))
-                        #,(syntax/loc #'st (define-getter st.marked-name st.getter-name st.getter))
-                        #,(syntax/loc #'st (define-setter st.marked-name st.setter-name st.setter)))])]
+                        #,(syntax/loc #'st
+                            (define st.marked-name st.default))
+                        #,(syntax/loc #'st
+                            (define-getter st.marked-name st.getter-name st.getter))
+                        #,(syntax/loc #'st
+                            (define-setter st.marked-name st.setter-name st.setter)))])]
                [define-elaborate
                  (syntax-parser
                    [de:defelaborate
                     #'(begin)])])
+            (define deserialize-binding
+              (make-parameter (cons 'name-deserialize
+                                    (module-path-index-join (quote-module-path deserialize) #f))))
             (define name
               (let ()
                 #,@(for/list ([sm (in-list state-methods)])
@@ -224,25 +231,23 @@
                   ((interface* () ([prop:serializable
                                     (make-serialize-info
                                      (λ (this)
-                                       (send this #,serialize-method))
-                                     (cons 'name-deserialize
-                                           (module-path-index-join (quote-module-path deserialize)
-                                                                   #f))
+                                       (send this serialize-method))
+                                     (deserialize-binding)
                                      #t
                                      (or (current-load-relative-directory) (current-directory)))]))
                    marked-interfaces ...)
                   #f)
                  #,@(if dd?*
                         (list
-                         #`(define (#,elaborator-method)
+                         #`(define (elaborator-method)
                              (list #,(if dd?* #'(quote-module-path "..") #'(quote-module-path))
                                    'elaborator-name))
-                         #`(#,(if base? #'public #'override) #,elaborator-method))
+                         #`(public/override elaborator-method))
                         '())
-                 (define (#,serialize-method)
+                 (define (serialize-method)
                    (vector #,(if base?
                                  #'#f
-                                 #`(super #,serialize-method))
+                                 #`(super serialize-method))
                            (let ()
                              (define state-vars
                                `((state.marked-name
@@ -252,13 +257,13 @@
                              (for/hash ([var (in-list state-vars)]
                                         #:when (third var))
                                (values (first var) (second var))))))
-                 (#,(if base? #'public #'override) #,serialize-method)
-                 (define (#,deserialize-method data)
+                 (public/override serialize-method)
+                 (define (deserialize-method data)
                    (define sup (vector-ref data 0))
                    (define table (vector-ref data 1))
                    #,(if base?
                          #`(void)
-                         #`(super #,deserialize-method sup))
+                         #`(super deserialize-method sup))
                    #,@(for/list ([i (in-list (attribute state.marked-name))]
                                  [p? (in-list (attribute state.persistence))])
                         (define key (syntax->datum i))
@@ -269,16 +274,19 @@
                                 [(#t) (set! #,i other-val)]
                                 [(#f) (void)]
                                 [else (set! #,i (p* #,i other-val))])))))
-                 (#,(if base? #'public #'override) #,deserialize-method)
-                 (define (#,copy-method other)
+                 (public/override deserialize-method)
+                 (define (copy-method other)
                    #,(if base?
                          #`(void)
-                         #`(super #,copy-method other))
+                         #`(super copy-method other))
                    #,@(for/list ([i (in-list (attribute state.marked-name))]
                                  [get (in-list state-methods)])
                         #`(set! #,i (send other #,get)))
                    (void))
-                 (#,(if base? #'public #'override) #,copy-method)
+                 (public/override copy-method)
+                 (define (deserialize-binding-method)
+                   deserialize-binding)
+                 (public/override deserialize-binding-method)
                  #,@(for/list ([i (in-list (attribute state.marked-name))]
                                [sm (in-list state-methods)])
                       #`(define/public (#,sm) #,i))
