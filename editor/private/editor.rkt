@@ -7,9 +7,13 @@
          racket/splicing
          syntax/location
          racket/serialize
+         racket/dict
          syntax/parse/define
+         racket/runtime-path
+         racket/match
          (for-syntax racket/base
                      (submod "lang.rkt" key-submod)
+                     racket/match
                      racket/serialize
                      racket/function
                      syntax/location
@@ -26,7 +30,7 @@
 (define deserial-binding-key (member-name-key deserialize-binding))
 (define copy-key (generate-member-key))
 (define elaborator-key (member-name-key elaborate))
-
+(define modpath-key (member-name-key get-modpath))
 
 (module m->r racket/base
   (provide (all-defined-out))
@@ -47,14 +51,22 @@
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
 (define-syntax-parser #%editor
-  [(_ (elaborator-binding elaborator-name) body)
+  [(_ binding-information body)
    #'(splicing-let-syntax
          ([this (λ (stx)
                   (parameterize ([current-load-relative-directory (this-mod-dir)])
+                    (match-define `((,editor-binding ,editor-name)
+                                    (,deserialize-binding ,deserialize-name)
+                                    (,elaborator-binding ,elaborator-name))
+                      (deserialize 'binding-information))
+                    (writeln (current-load-relative-directory))
+                    (writeln elaborator-binding)
+                    (writeln (module-path-index-resolve elaborator-binding))
+                    ;(writeln (resolve-module-path-index elaborator-binding))
                     (define/syntax-parse elaborator
                       (syntax-local-lift-require
-                       (deserialize (syntax->datum #'elaborator-binding))
-                       (datum->syntax #f (syntax->datum #'elaborator-name))))
+                       (module-path-index-resolve elaborator-binding)
+                       (datum->syntax #f elaborator-name)))
                     #'(elaborator body)))])
        (this))])
 
@@ -64,7 +76,34 @@
 ;; (is-a?/c editor$) -> (listof module-path-index? symbol?)
 (define (editor->elaborator editor)
   (define-member-name elaborator elaborator-key)
-  (send editor elaborator))
+  (define-member-name deserialize-binding deserial-binding-key)
+  (define-member-name modpath modpath-key)
+  (define binding ((send editor deserialize-binding)))
+  (list (send editor modpath)
+        (if (pair? binding)
+            (list (cdr binding) (car binding))
+            (list #"???" #"???"))
+        (send editor elaborator)))
+
+;; Deserializes an editor, but giving a new modpath for its
+;;   deserialize id.
+;; An optional dictionary of children can be provided to rehome
+;;   child elements in the editor as well.
+;; editor : An editor instance
+;; new-modpath : Any value given to prop:serialize's deserialize-id
+;; children : (Dictof <Editor> <Modpath>)
+(define (serialize+rehome editor new-modpath
+                          #:deserialize-relative-directory [rel-to #f]
+                          #:children [children* #f])
+  (define-member-name deserial-binding deserial-binding-key)
+  (define children (or children* (hash)))
+  (let loop ([child# (dict-iterate-first children)])
+    (if child#
+        (parameterize ([(send (dict-iterate-key children child#) deserial-binding)
+                        (dict-iterate-value children child#)])
+          (loop (dict-iterate-next children child#)))
+        (parameterize ([(send editor deserial-binding) new-modpath])
+          (serialize editor #:deserialize-relative-directory rel-to)))))
 
 (define-syntax-parser define-getter
   [(_ _:id _:id #f)
@@ -148,12 +187,13 @@
      #:with deserialize-binding-method (gensym 'deserialize-binding)
      #:with copy-method (gensym 'copy)
      #:with elaborator-method (gensym 'elaborator)
+     #:with modpath-method (gensym 'get-modpath)
+     #:with (state-methods ...) (for/list ([i (in-list (attribute state.getter-name))])
+                                  (gensym (syntax->datum i)))
      (define dd?* (syntax-e #'dd?))
      (unless (or (not dd?*)
                  (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
-     (define state-methods (for/list ([i (in-list (attribute state.getter-name))])
-                             (gensym (syntax->datum i))))
      (define base? (syntax-e (attribute b?)))
      (define/syntax-parse public/override
        (if base? #'public #'override))
@@ -176,13 +216,18 @@
          (#,@(if dd?*
                  #`(editor-submod
                     (require marked-reqs ...)
-                    (#%require #,(quote-module-path)))
-                 #'(begin))
+                    (#%require #,(quote-module-path))
+                    (define this-modpath
+                      (variable-reference->module-path-index (#%variable-reference)))
+                    (define-runtime-module-path-index this-filepath "."))
+                 #'(begin
+                     (define this-modpath #f)))
           (define-member-name serialize-method serial-key)
           (define-member-name deserialize-method deserial-key)
           (define-member-name deserialize-binding-method deserial-binding-key)
           (define-member-name copy-method copy-key)
           (define-member-name elaborator-method elaborator-key)
+          (define-member-name modpath-method modpath-key)
           #,@(if dd?*
                  (list
                   #'(provide name)
@@ -219,11 +264,10 @@
                     #'(begin)])])
             (define deserialize-binding
               (make-parameter (cons 'name-deserialize
-                                    (module-path-index-join (quote-module-path deserialize) #f))))
+                                    (module-path-index-join '(submod "." deserialize) this-modpath))))
             (define name
               (let ()
-                #,@(for/list ([sm (in-list state-methods)])
-                     #`(define-local-member-name #,sm))
+                (define-local-member-name state-methods) ...
                 (class/derived
                  orig-stx
                  (name
@@ -232,18 +276,17 @@
                                     (make-serialize-info
                                      (λ (this)
                                        (send this serialize-method))
-                                     (deserialize-binding)
+                                     deserialize-binding
                                      #t
                                      (or (current-load-relative-directory) (current-directory)))]))
                    marked-interfaces ...)
                   #f)
-                 #,@(if dd?*
-                        (list
-                         #`(define (elaborator-method)
-                             (list #,(if dd?* #'(quote-module-path "..") #'(quote-module-path))
-                                   'elaborator-name))
-                         #`(public/override elaborator-method))
-                        '())
+                 (define (elaborator-method)
+                   #,(if dd?*
+                         #'(list (module-path-index-join '(submod "..") this-modpath)
+                                 'elaborator-name)
+                         #'(list this-modpath #f)))
+                 (public/override elaborator-method)
                  (define (serialize-method)
                    (vector #,(if base?
                                  #'#f
@@ -279,17 +322,15 @@
                    #,(if base?
                          #`(void)
                          #`(super copy-method other))
-                   #,@(for/list ([i (in-list (attribute state.marked-name))]
-                                 [get (in-list state-methods)])
-                        #`(set! #,i (send other #,get)))
-                   (void))
+                   (set! state.marked-name (send other state-methods)) ...)
                  (public/override copy-method)
                  (define (deserialize-binding-method)
                    deserialize-binding)
                  (public/override deserialize-binding-method)
-                 #,@(for/list ([i (in-list (attribute state.marked-name))]
-                               [sm (in-list state-methods)])
-                      #`(define/public (#,sm) #,i))
+                 (define (modpath-method)
+                   (list this-modpath 'name))
+                 (public/override modpath-method)
+                 (define/public (state-methods) state.marked-name) ...
                  marked-body ...))))))]))
 
 (define-syntax (define-base-editor* stx)

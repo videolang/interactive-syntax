@@ -77,24 +77,16 @@
           (λ (this)
             (define get-module (dynamic-require (from-editor (quote-module-path)) 'get-module))
             (define text (send this get-definitions-text))
+            (define text-surrogate (send text get-surrogate))
             (define the-editor (get-module this))
             (when (and the-editor (pair? the-editor))
               (define editor-class$
                 (cond
                   [(equal? (car the-editor) "")
                    (define out (open-output-bytes))
-                   (define mod-text (send text save-port out 'standard))
-                   (define mod-stx
-                     (with-input-from-bytes (get-output-bytes out)
-                       (λ ()
-                         (with-module-reading-parameterization
-                           read-syntax))))
-                   (define mod-name
-                     (syntax-parse mod-stx
-                       [(module name lang body ...)
-                        (attribute name)]))
-                   (parameterize ([current-namespace (gui:make-gui-namespace)])
-                     (eval mod-stx)
+                   (define mod-name (send text-surrogate get-mod-name))
+                   (parameterize* ([current-namespace (send text-surrogate get-editor-namespace)]
+                                   #;[current-namespace (module->namespace (from-editor `',mod-name))])
                      (namespace-require (from-editor `',mod-name))
                      (namespace-variable-value (with-input-from-string (cdr the-editor) read)))]
                   [else
@@ -111,9 +103,13 @@
                                                        (cdr the-editor)
                                                        full-path
                                                        e))])
-                     (parameterize ([current-namespace (gui:make-gui-namespace)])
+                     (parameterize* ([current-namespace (send text-surrogate get-editor-namespace)]
+                                     #;[current-namespace (module->namespace (from-editor full-path))])
                        (namespace-require (from-editor full-path))
-                       (namespace-variable-value (with-input-from-string (cdr the-editor) read))))]))
+                       (namespace-variable-value
+                        (with-input-from-string (cdr the-editor) read))))]))
               (send text insert (new editor-snip%
-                                     [editor (new editor-class$)]))))
+                                     [editor (new editor-class$)]
+                                     [namespace (send text-surrogate get-editor-namespace)]
+                                     [mod-name (send text-surrogate get-mod-name)]))))
           #f)))

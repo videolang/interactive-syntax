@@ -59,12 +59,23 @@
 
 ;; ===================================================================================================
 
+(define editor-read-as-snip? (make-parameter #f))
+
 ;; Editor snip and snipclass implementations
 
 (define editor-snip%
   (class* snip% (readable-snip<%>)
     (inherit get-flags set-flags set-snipclass)
-    (init-field editor)
+    ;; editor contains the actual interactive editor.
+    (init-field editor
+                ;; Serial is only if it cannot yet be processed because
+                ;;   we need to first expand _this_ file.
+                [serial-sexp #f]
+                ;; The modname of the editor under edit in the current
+                ;;   namespace
+                [mod-name #f]
+                ;; The namespace for the editor under edit
+                [namespace #f])
     (super-new)
     (set-flags (cons 'handles-events (get-flags)))
     (set-snipclass editor-snip-class)
@@ -76,7 +87,16 @@
       (define admin (send this get-admin))
       (when admin
         (send admin resized this #t)))
+    (define/public (set-namespace! ns)
+      (set! namespace ns))
+    (define/public (set-mod-name! m)
+      (set! mod-name m))
+    (define/private (init-editor)
+      (unless editor
+        (parameterize ([current-namespace (or namespace (current-namespace))])
+          (set-editor! (deserialize serial-sexp)))))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
+      (init-editor)
       (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
       (define (wsb! x y) (when x (set-box! x y)))
       (wsb! w w*)
@@ -86,29 +106,52 @@
       (wsb! rs r*)
       (wsb! d b*))
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
+      (init-editor)
       (send editor draw dc x y))
     (define/override (on-char dc x y ex ey event)
+      (init-editor)
       (send editor get-extent x y) ;; TODO, remove this
       (send editor on-event event x y)
       (define admin (send this get-admin))
       (when admin
         (send admin resized this #t)))
     (define/override (on-event dc x y ex ey event)
+      (init-editor)
       (send editor get-extent x y) ;; TODO, remove this
       (send editor on-event event x y)
       (define admin (send this get-admin))
       (when admin
         (send admin resized this #t)))
     (define/override (copy)
+      (init-editor)
       (new editor-snip%
            [editor (send editor copy)]))
-    (define/private (editor-binding)
-      (match-define (list binding-mod binding-name)
+    (define/public (editor-binding)
+      (init-editor)
+      (match-define `((,edit-mod ,edit-name) (,des-mod ,des-id) (,elab-mod ,elab-name))
         (editor->elaborator editor))
-      (list (serialize binding-mod #:relative-to (maybe-get-filename)) binding-name))
+      (define filename (maybe-get-filename))
+      (values
+       (list (list edit-mod edit-name)
+             (list des-mod des-id)
+             (list elab-mod elab-name))
+       #f #;(equal? (car edit-mod)
+               mod-name)
+       des-id))
+    (define/private (serialize-data data des rel same-file?)
+      (if same-file?
+          (serialize+rehome data des #:relative-directory rel)
+          (serialize data #:relative-directory rel)))
+    (define/private (serialize-editor)
+      (define-values (binding same-file? des-name) (editor-binding))
+      (define f (maybe-get-filename))
+      (values (serialize-data binding des-name (and f (cons f (build-path "/"))) same-file?)
+              (serialize-data editor des-name (and f (cons f (build-path "/"))) same-file?)))
     (define/override (get-text offset num [flattened? #f])
+      (init-editor)
+      (define-values (binding serial) (serialize-editor))
       ;; Disregarding flattened? ...
-      (format "#editor~s~s" (editor-binding) (serialize editor #:relative-to (maybe-get-filename))))
+      (format "#editor~s~s" binding serial))
     (define/private (maybe-get-filename)
       (define maybe-admin (send this get-admin))
       (define maybe-filename
@@ -122,10 +165,13 @@
           (path-only maybe-filename)
           maybe-filename))
     (define/public (read-special src line col pos)
-      (define editor-datum `(#%editor ,(editor-binding) ,(serialize editor)))
-      (datum->syntax #'#f
-                     editor-datum
-                     (vector src line col pos (string-length (format "~s" editor-datum)))))
+      (cond [(editor-read-as-snip?) this]
+            [else
+             (define-values (binding serial) (serialize-editor))
+             (define editor-datum `(#%editor ,binding ,serial))
+             (datum->syntax #'#f
+                            editor-datum
+                            (vector src line col pos (string-length (format "~s" editor-datum))))]))
     (define/override (write f)
       (define text (string->bytes/utf-8 (get-text 0 0)))
       (send f put text))))
@@ -143,7 +189,14 @@
           (λ ()
             (parameterize ([current-readtable (make-editor-readtable)])
               (base:read)))))
-      (new editor-snip% [editor (deserialize the-editor)]))))
+      (define maybe-editor
+        (with-handlers ([exn:fail? (λ (e)
+                                     (log-warning "~s" e)
+                                     #f)])
+          (deserialize the-editor)))
+      (new editor-snip%
+           [editor maybe-editor]
+           [serial-sexp the-editor]))))
 
 (define editor-snip-class (new editor-snip-class%))
 
