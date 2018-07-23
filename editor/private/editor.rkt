@@ -59,10 +59,6 @@
                                     (,deserialize-binding ,deserialize-name)
                                     (,elaborator-binding ,elaborator-name))
                       (deserialize 'binding-information))
-                    (writeln (current-load-relative-directory))
-                    (writeln elaborator-binding)
-                    (writeln (module-path-index-resolve elaborator-binding))
-                    ;(writeln (resolve-module-path-index elaborator-binding))
                     (define/syntax-parse elaborator
                       (syntax-local-lift-require
                        (module-path-index-resolve elaborator-binding)

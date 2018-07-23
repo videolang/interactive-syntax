@@ -11,6 +11,7 @@
          images/icons/style
          images/icons/control
          syntax-color/module-lexer
+         syntax/modresolve
          racket/match
          racket/set
          racket/port
@@ -52,7 +53,18 @@
       active-mod-name)
     (define/public (get-editor-namespace)
       editor-namespace)
+    (define/private (maybe-get-filename)
+      (define tmp (box #f))
+      (define filename (send text get-filename tmp))
+      (and (not (unbox tmp))
+           filename
+           (let* ([_ (if (string? filename)
+                         (string->path filename)
+                         filename)]
+                  [_ (resolve-module-path _)])
+             _)))
     (define/public (reset-editor-namespace)
+      (define maybe-filename (maybe-get-filename))
       (parameterize ([editor-read-as-snip? #t])
         (define new-ns (make-editor-namespace))
         (parameterize ([current-namespace new-ns])
@@ -66,17 +78,21 @@
                                  [else (raise e)]))])
               (let ([stx (try-read-editor)])
                 (set! active-mod-name
-                      (syntax-parse stx
-                        [(mod name lang body ...)
-                         (syntax->datum #'name)]))
+                      (or maybe-filename
+                          (list 'quote
+                                (syntax-parse stx
+                                  [(mod name lang body ...)
+                                   (syntax->datum #'name)]))))
                 stx)))
-          (eval mod-stx)
-          (namespace-require/expansion-time `',active-mod-name)
+          (parameterize ([current-module-declare-name
+                          (and maybe-filename (make-resolved-module-path maybe-filename))])
+            (eval mod-stx))
+          (namespace-require/expansion-time active-mod-name)
           (with-handlers ([exn:fail? (λ (x)
                                        (log-warning "~s" x)
                                        (void))])
-            (namespace-require (from-editor `',active-mod-name))
-            (namespace-require `(submod ',active-mod-name editor deserialize))))
+            (namespace-require (from-editor active-mod-name))
+            (namespace-require `(submod ,active-mod-name editor deserialize))))
         (set! editor-namespace new-ns)))
     (define/public (try-read-editor)
       (parameterize ([editor-read-as-snip? #t])

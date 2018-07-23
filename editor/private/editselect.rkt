@@ -87,7 +87,7 @@
                    (define mod-name (send text-surrogate get-mod-name))
                    (parameterize* ([current-namespace (send text-surrogate get-editor-namespace)]
                                    #;[current-namespace (module->namespace (from-editor `',mod-name))])
-                     (namespace-require (from-editor `',mod-name))
+                     (namespace-require (from-editor mod-name))
                      (namespace-variable-value (with-input-from-string (cdr the-editor) read)))]
                   [else
                    (define directory (send (send this get-current-tab) get-directory))
