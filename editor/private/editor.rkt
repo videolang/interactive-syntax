@@ -48,6 +48,23 @@
         modpath)))
 (require 'm->r (for-syntax 'm->r))
 
+;; Because deserialized editors use a pseudo-identifier
+;;   to resolve to an elaborator, we need to reconstruct a
+;;   racket identifier out of their symbol and modpath.
+;; NOTE THIS DOES NOT ACTUALLY REQUIRE THE MODPATH, USE
+;;   syntax-local-lift-require FOR THAT!!!!  (Rather, this uses
+;;   whatever module exists in the registry under that name.)
+;; resolved-module-path? symbol? -> identifier?
+(define-for-syntax (forge-identifier modpath sym)
+  (define ns (make-base-empty-namespace))
+  (parameterize ([current-namespace ns]
+                 [current-module-declare-name modpath])
+    (eval #`(module dummy racket/base
+              (define #,sym 'dummy)
+              (provide #,sym)))
+    (namespace-require modpath))
+  (namespace-syntax-introduce (datum->syntax #f sym)))
+
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
 (define-syntax-parser #%editor
@@ -60,9 +77,10 @@
                                     (,elaborator-binding ,elaborator-name))
                       (deserialize 'binding-information))
                     (define/syntax-parse elaborator
-                      (syntax-local-lift-require
+                      (forge-identifier
+                       ;syntax-local-lift-require
                        (module-path-index-resolve elaborator-binding)
-                       (datum->syntax #f elaborator-name)))
+                       elaborator-name))
                     #'(elaborator body)))])
        (this))])
 
@@ -167,8 +185,8 @@
                                            [(elaborator.body 1) (list #'this)]))
                     internal-body) ...)
          (~seq body ...)))
-     #:with elaborator-name (format-id stx "~a:elaborate" #'name)
-     #:with name-deserialize (format-id stx "~a:deserialize" #'name)
+     #:with elaborator-name (format-id #'orig-stx "~a:elaborate" #'name)
+     #:with name-deserialize (format-id #'orig-stx "~a:deserialize" #'name)
      #:with (marked-interfaces ...) (editor/user-syntax-introduce #'(interfaces ...))
      #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
      #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
