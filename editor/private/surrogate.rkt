@@ -2,8 +2,11 @@
 
 (provide (all-defined-out))
 (require racket/class
+         racket/unit
+         racket/runtime-path
          racket/list
          syntax/modread
+         drracket/tool
          framework
          (only-in racket/gui/base
                   open-input-text-editor
@@ -48,9 +51,9 @@
     ;; Ensure all editors in a buffer use the same namespace
     (define editor-namespace #f)
     (define stored-mod-stx #f)
-    (define active-mod-name #f)
+    (define stored-mod-name #f)
     (define/public (get-mod-name)
-      active-mod-name)
+      stored-mod-name)
     (define/public (get-editor-namespace)
       editor-namespace)
     (define/private (maybe-get-filename)
@@ -68,32 +71,25 @@
       (parameterize ([editor-read-as-snip? #t])
         (define new-ns (make-editor-namespace))
         (parameterize ([current-namespace new-ns])
-          (define mod-stx
-            (with-handlers ([exn:fail?
-                             (λ (e)
-                               (cond
-                                 [stored-mod-stx
-                                  (log-warning "~a" e)
-                                  stored-mod-stx]
-                                 [else (raise e)]))])
+          (with-handlers ([exn:fail? (λ (e) (log-warning "~a" e))])
+            (define-values (mod-stx mod-name)
               (let ([stx (try-read-editor)])
-                (set! active-mod-name
+                (values stx
                       (or maybe-filename
                           (list 'quote
                                 (syntax-parse stx
                                   [(mod name lang body ...)
-                                   (syntax->datum #'name)]))))
-                stx)))
-          (parameterize ([current-module-declare-name
-                          (and maybe-filename (make-resolved-module-path maybe-filename))])
-            (eval mod-stx))
-          (namespace-require/expansion-time active-mod-name)
-          (with-handlers ([exn:fail? (λ (x)
-                                       (log-warning "~s" x)
-                                       (void))])
-            (namespace-require (from-editor active-mod-name))
-            (namespace-require `(submod ,active-mod-name editor deserialize))))
-        (set! editor-namespace new-ns)))
+                                   (syntax->datum #'name)]))))))
+            (parameterize ([current-module-declare-name
+                            (and maybe-filename (make-resolved-module-path maybe-filename))])
+              (eval mod-stx))
+            (namespace-require/expansion-time mod-name)
+            (namespace-require (from-editor mod-name))
+            (namespace-require `(submod ,mod-name editor deserialize))
+            (log-info "DONE!")
+            (set! stored-mod-name mod-name)
+            (set! stored-mod-stx mod-stx)
+            (set! editor-namespace new-ns)))))
     (define/public (try-read-editor)
       (parameterize ([editor-read-as-snip? #t])
         (define out (open-output-bytes))
@@ -116,36 +112,61 @@
   (fast-forward-icon #:color "green"
                      #:height (toolbar-icon-height)))
 
+(define (update-editors! text editors)
+  (parameterize ([editor-read-as-snip? #t])
+    (define text-surrogate (send text get-surrogate))
+    (send text-surrogate reset-editor-namespace)
+    (define editor-namespace (send text-surrogate get-editor-namespace))
+    (define editor-mod-name (send text-surrogate get-mod-name))
+    ;; First, update all editor-snips already in use.
+    (let loop ([last-editor #f])
+      (define current-editor (send text find-next-non-string-snip last-editor))
+      (cond
+        [(not current-editor) (void)]
+      [else
+       (when (is-a? current-editor editor-snip%)
+         (define-values (binding is-same-file des-name)
+           (send current-editor editor-binding))
+         (define serial
+           (if is-same-file
+               (serialize+rehome (send current-editor get-editor) des-name)
+               (serialize (send current-editor get-editor))))
+         (send current-editor set-editor! (eval `(deserialize ',serial) editor-namespace))
+         (send current-editor set-namespace! editor-namespace)
+         (send current-editor set-mod-name! editor-mod-name))
+       (loop current-editor)]))
+    ;; Finally, replace their text with an actual editor snip
+    (send text set-file-format 'standard)
+    (define sorted-editors
+      (sort (set->list editors) > #:key second))
+    (for ([e (in-list sorted-editors)])
+      (with-handlers ([exn:fail? (λ (e)
+                                   (raise e)
+                                   (void))])
+        (match-define `(#%editor ,elaborator ,editor)
+          (let ([edi (first e)])
+            (cond [(string? edi)
+                   (with-input-from-string edi
+                     (λ ()
+                       (parameterize ([current-readtable (make-editor-readtable)])
+                         (read))))]
+                  [else edi])))
+        (define des (eval `(deserialize ',editor) editor-namespace))
+        (send text delete (sub1 (second e)) (sub1 (third e)) #f)
+        (send text insert (new editor-snip%
+                               [editor des]
+                               [namespace editor-namespace]
+                               [mod-name editor-mod-name]) (sub1 (second e)))))))
+  
 (define toggle-button
   (list "Update Editors"
         editor-icon
         (λ (this)
           (parameterize ([editor-read-as-snip? #t])
             (define text (send this get-definitions-text))
-            (define text-surrogate (send text get-surrogate))
-            (send text-surrogate reset-editor-namespace)
-            (define editor-namespace (send text-surrogate get-editor-namespace))
-            (define editor-mod-name (send text-surrogate get-mod-name))
             (define port #f)
             (define data (mutable-set))
-            ;; First, update all editor-snips already in use.
-            (let loop ([last-editor #f])
-              (define current-editor (send text find-next-non-string-snip last-editor))
-              (cond
-                [(not current-editor) (void)]
-                [else
-                 (when (is-a? current-editor editor-snip%)
-                   (define-values (binding is-same-file des-name)
-                     (send current-editor editor-binding))
-                   (define serial
-                     (if is-same-file
-                         (serialize+rehome (send current-editor get-editor) des-name)
-                         (serialize (send current-editor get-editor))))
-                   (send current-editor set-editor! (eval `(deserialize ',serial) editor-namespace))
-                   (send current-editor set-namespace! editor-namespace)
-                   (send current-editor set-mod-name! editor-mod-name))
-                 (loop current-editor)]))
-            ;; Then grab the location of every editor in text
+            ;; First, grab the location of every editor in text
             (dynamic-wind
              (λ ()
                (set! port (open-input-text-editor text 0 'end values text #t #:lock-while-reading? #t)))
@@ -163,23 +184,24 @@
                      (loop)))))
              (λ ()
                (close-input-port port)))
-            ;; Finally, replace their text with an actual editor snip
-            (send text set-file-format 'standard)
-            (define sorted-editors
-              (sort (set->list data) > #:key second))
-            (for ([e (in-list sorted-editors)])
-              (with-handlers ([exn:fail? (λ (e)
-                                           (raise e)
-                                           (void))])
-                (match-define `(#%editor ,elaborator ,editor)
-                  (with-input-from-string (first e)
-                    (λ ()
-                      (parameterize ([current-readtable (make-editor-readtable)])
-                        (read)))))
-                (define des (eval `(deserialize ',editor) editor-namespace))
-                (send text delete (sub1 (second e)) (sub1 (third e)) #f)
-                (send text insert (new editor-snip%
-                                       [editor des]
-                                       [namespace editor-namespace]
-                                       [mod-name editor-mod-name]) (sub1 (second e))))))
-          #f)))
+            ;; Finally, update the editors
+            (update-editors! text data)))
+          #f))
+
+(define-runtime-path background.rkt "background.rkt")
+
+(define tool@
+  (unit
+    (import drracket:tool^)
+    (export drracket:tool-exports^)
+    
+    (define (phase1) (void))
+    (define (phase2) (void))
+
+    (drracket:module-language-tools:add-online-expansion-monitor	
+     background.rkt 'expansion-monitor
+     (λ (text data)
+       (match data
+         [(vector elaborator editor start end)
+          (update-editors! text `(((#%editor ,elaborator ,editor) ,start ,end)))]
+         [_ (void)])))))

@@ -53,6 +53,16 @@
            (define the-editor (read-syntax/recursive src port))
            (define stx (build-source-location-syntax (make-srcloc src line col pos span)))
            (define inner-scope (make-syntax-introducer))
+           (define-values (new-line new-col new-pos)
+             (port-next-location port))
+           (log-message (current-logger)
+                        'info
+                        'editor-lex-for-editors
+                        ""
+                        (vector the-elaborator
+                                the-editor
+                                src line col pos
+                                new-line new-col new-pos))
            (outer-scope
             (inner-scope
              (quasisyntax/loc stx
