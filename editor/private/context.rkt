@@ -124,8 +124,16 @@
         (send admin resized this #t)))
     (define/override (copy)
       (init-editor)
+      (define copy
+        (with-handlers ([exn:fail?
+                         (λ (e)
+                           (log-warning "~s" e)
+                           #f)])
+          (send editor copy)))
+      (define sexp (serialize editor))
       (new editor-snip%
-           [editor (send editor copy)]))
+           [editor copy]
+           [serial-sexp sexp]))
     (define/public (editor-binding)
       (init-editor)
       (match-define `((,edit-mod ,edit-name) (,des-mod ,des-id) (,elab-mod ,elab-name))

@@ -202,6 +202,6 @@
      background.rkt 'expansion-monitor
      (λ (text data)
        (match data
-         [(vector elaborator editor start end)
+         #;[(vector elaborator editor start end)
           (update-editors! text `(((#%editor ,elaborator ,editor) ,start ,end)))]
          [_ (void)])))))
