@@ -60,10 +60,9 @@
   (parameterize ([current-namespace ns]
                  [current-module-declare-name modpath])
     (eval #`(module dummy racket/base
-              (define #,sym 'dummy)
-              (provide #,sym)))
-    (namespace-require modpath))
-  (namespace-syntax-introduce (datum->syntax #f sym)))
+              (define #,sym 'dummy)))
+    (namespace-syntax-introduce (datum->syntax #f sym)
+                                (module->namespace modpath))))
 
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.

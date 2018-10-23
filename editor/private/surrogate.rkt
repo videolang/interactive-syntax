@@ -49,7 +49,7 @@
       (set! text t)
       (reset-editor-namespace))
     ;; Ensure all editors in a buffer use the same namespace
-    (define editor-namespace #f)
+    (define editor-namespace (make-editor-namespace))
     (define stored-mod-stx #f)
     (define stored-mod-name #f)
     (define/public (get-mod-name)
@@ -86,7 +86,6 @@
             (namespace-require/expansion-time mod-name)
             (namespace-require (from-editor mod-name))
             (namespace-require `(submod ,mod-name editor deserialize))
-            (log-info "DONE!")
             (set! stored-mod-name mod-name)
             (set! stored-mod-stx mod-stx)
             (set! editor-namespace new-ns)))))

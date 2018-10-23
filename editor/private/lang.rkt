@@ -55,6 +55,7 @@
     #:mutable)
   (define the-submod-data (submod-data '() #f))
   (define (add-syntax-to-editor! stx
+                                 #:scopes [scp #f]
                                  #:required? [req? #t])
     (define existing (submod-data-forms the-submod-data))
     (when (and (not (submod-data-lifted the-submod-data)) req?)
@@ -67,18 +68,26 @@
 
 (define-syntax (editor-submod stx)
   (syntax-parse stx
-    [(_ (~optional (~seq #:required? req?:boolean) #:defaults ([req? #'#t]))
+    [(_ (~or (~optional (~seq #:required? req?:boolean) #:defaults ([req? #'#t])))
         body ...)
-     (add-syntax-to-editor! (syntax-local-introduce #'(body ...))
-                            #:required? (syntax-e #'req?))
-     #'(begin)]))
+     (case (syntax-local-context)
+       [(module)
+        (add-syntax-to-editor! (syntax-local-introduce #'(body ...))
+                               #:scopes (let ([_ (attribute body)])
+                                          (if (pair? _) (car _) #f))
+                               #:required? (syntax-e #'req?))
+        #'(begin)]
+       [else #`(begin #,stx)])]))
 
 (define-syntax (define-editor-submodule stx)
   (syntax-parse stx
     [(_ base lang)
+     (define base-scope
+       (editor-syntax-introduce (syntax-local-introduce (datum->syntax #f #f))))
      #`(module* editor racket/base
-         (require base
-                  lang
+         (require (only-in #,@(datum->syntax base-scope '(racket/base submod)))
+                  #,(datum->syntax base-scope (syntax->datum #'base))
+                  #,(datum->syntax base-scope (syntax->datum #'lang))
                   racket/serialize
                   racket/class)
          #,@(map syntax-local-introduce (reverse (submod-data-forms the-submod-data))))]))
@@ -96,10 +105,10 @@
     [(? syntax?)
      (syntax-parse path
        #:literals (from-editor submod)
-       [(from-editor mod)
-        #'(submod mod editor)]
        [(from-editor (submod subpath ...))
         #'(submod subpath ... editor)]
+       [(from-editor mod)
+        #'(submod mod editor)]
        [_ path])]
     [_ path]))
 
@@ -108,11 +117,16 @@
 ;; Must only be used at top/module level.
 (define-syntax-parser maybe-require-submod
   [(_ phase mod-path)
-   (when (module-declared?
-        (convert-relative-module-path (expand-editorpath `(from-editor ,(syntax->datum #'mod-path))))
-        #t)
+   (when (or (with-handlers* ([exn:fail? (λ (e) #f)])
+               (module-declared?
+                (convert-relative-module-path
+                 (expand-editorpath `(from-editor ,(syntax->datum #'mod-path))))
+                #t))
+             (with-handlers* ([exn:fail? (λ (e) #f)])
+               (expand-import #'(from-editor mod-path))
+               #t))
      (add-syntax-to-editor!
-      (syntax-local-introduce #'((~require (for-meta phase (from-editor mod-path)))))
+      (syntax-local-introduce #`((~require (for-meta phase (from-editor mod-path)))))
       #:required? #f))
    #'(begin)])
 
@@ -229,13 +243,9 @@
 (define-syntax (begin-for-editor stx)
   (syntax-parse stx
     [(_ code ...)
-     #:with (base+lang ...) (map (compose editor-syntax-introduce (curry datum->syntax stx))
-                                 `(,(syntax-parameter-value #'current-editor-lang)
-                                   ,(syntax-parameter-value #'current-editor-base)))
      #:with (marked-code ...) (editor/user-syntax-introduce #'(code ...))
      (syntax/loc stx
        (editor-submod
-        (require base+lang ...)
         marked-code ...))]))
 
 (define-syntax (define-for-editor stx)
