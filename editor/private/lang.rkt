@@ -79,15 +79,17 @@
         #'(begin)]
        [else #`(begin #,stx)])]))
 
+(define-for-syntax (wrap-scope scopes stx)
+  (datum->syntax scopes (syntax-e stx)))
+
 (define-syntax (define-editor-submodule stx)
   (syntax-parse stx
     [(_ base lang)
      (define base-scope
        (editor-syntax-introduce (syntax-local-introduce (datum->syntax #f #f))))
      #`(module* editor racket/base
-         (require (only-in #,@(datum->syntax base-scope '(racket/base submod)))
-                  #,(datum->syntax base-scope (syntax->datum #'base))
-                  #,(datum->syntax base-scope (syntax->datum #'lang))
+         (require #,(wrap-scope base-scope #'base)
+                  #,(wrap-scope base-scope #'lang)
                   racket/serialize
                   racket/class)
          #,@(map syntax-local-introduce (reverse (submod-data-forms the-submod-data))))]))
@@ -96,20 +98,16 @@
 
 ;; Expand for-editor to a recognized module path
 ;; editor-module-path? -> module-path?
-(define-for-syntax (expand-editorpath path)
+(define-for-syntax (expand-editor-req-path path)
   (match path
+    [`(from-editor (submod ".." ,subpath ...))
+     `(submod ".." ".." ,@subpath editor)]
+    [`(from-editor (submod "." ,subpath ...))
+     `(submod ".." "." ,@subpath editor)]
     [`(from-editor (submod ,subpath ...))
      `(submod ,@subpath editor)]
     [`(from-editor ,mod)
      `(submod ,mod editor)]
-    [(? syntax?)
-     (syntax-parse path
-       #:literals (from-editor submod)
-       [(from-editor (submod subpath ...))
-        #'(submod subpath ... editor)]
-       [(from-editor mod)
-        #'(submod mod editor)]
-       [_ path])]
     [_ path]))
 
 ;; Test to see if the given submodule exists.
@@ -117,16 +115,18 @@
 ;; Must only be used at top/module level.
 (define-syntax-parser maybe-require-submod
   [(_ phase mod-path)
+   (define expanded-modpath (expand-editor-req-path `(from-editor ,(syntax->datum #'mod-path))))
    (when (or (with-handlers* ([exn:fail? (λ (e) #f)])
                (module-declared?
-                (convert-relative-module-path
-                 (expand-editorpath `(from-editor ,(syntax->datum #'mod-path))))
+                (convert-relative-module-path expanded-modpath)
                 #t))
              (with-handlers* ([exn:fail? (λ (e) #f)])
                (expand-import #'(from-editor mod-path))
                #t))
+     (define expanded-modpath-stx (datum->syntax #'#f expanded-modpath))
      (add-syntax-to-editor!
-      (syntax-local-introduce #`((~require (for-meta phase (from-editor mod-path)))))
+      (syntax-local-introduce
+       #`((~require (for-meta phase #,(wrap-scope #'mod-path expanded-modpath-stx)))))
       #:required? #f))
    #'(begin)])
 
@@ -196,6 +196,15 @@
 
 (define-syntax for-editor (for-editor-struct))
 
+(define-for-syntax (expand-editorpath path)
+  (syntax-parse path
+    #:literals (from-editor submod)
+    [(from-editor (submod subpath ...))
+     #'(submod subpath ... editor)]
+    [(from-editor mod)
+     #'(submod mod editor)]
+    [_ path]))
+
 ;; Just as for-editor is similar to for-syntax, for-elaborator
 ;; is similar to for-template. It lets helper modules bring in
 ;; editor components from another module.
@@ -223,7 +232,7 @@
              (define new-imports
                (for/list ([i (in-list imports)])
                  (struct-copy import i
-                              [local-id (format-id stx "~a" (import-local-id i))])))
+                              [local-id (format-id n "~a" (import-local-id i))])))
              (values (append new-imports i-list)
                      (append is is-list)))])))
     #:property prop:provide-pre-transformer
