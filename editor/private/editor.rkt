@@ -188,11 +188,6 @@
      #:with name-deserialize (format-id #'orig-stx "~a:deserialize" #'name)
      #:with (marked-interfaces ...) (editor/user-syntax-introduce #'(interfaces ...))
      #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
-     #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
-                                   `(,(syntax-parameter-value #'current-editor-lang)
-                                     racket/class
-                                     racket/serialize
-                                     ,(syntax-parameter-value #'current-editor-base)))
      #:with marked-supclass (editor/user-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor/user-syntax-introduce #'(plain-state ...))
      #:with serialize-method (gensym 'serialize)
@@ -228,7 +223,6 @@
                 elaborator.body ...)])
          (#,@(if dd?*
                  #`(editor-submod
-                    (require marked-reqs ...)
                     (#%require #,(quote-module-path))
                     (define this-modpath
                       (variable-reference->module-path-index (#%variable-reference)))
@@ -371,11 +365,6 @@
      #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
      #:with (marked-interfaces ...) (editor/user-syntax-introduce #'(interfaces ...))
      #:with (marked-mixins ...) (editor/user-syntax-introduce #'(mixins ...))
-     #:with (marked-reqs ...) (map (compose editor-syntax-introduce (curry datum->syntax #'name))
-                                   `(,(syntax-parameter-value #'current-editor-lang)
-                                     racket/class
-                                     racket/serialize
-                                     ,(syntax-parameter-value #'current-editor-base)))
      #`(begin
          (begin-for-syntax
            (let ()
@@ -384,7 +373,6 @@
                (set-box! b (cons #'name (unbox b))))))
          (editor-submod
           (provide name)
-          (require marked-reqs ...)
           (#%require #,(quote-module-path))
           (define (name $)
             (~define-editor #,stx
