@@ -56,13 +56,9 @@
 ;;   whatever module exists in the registry under that name.)
 ;; resolved-module-path? symbol? -> identifier?
 (define-for-syntax (forge-identifier modpath sym)
-  (define ns (make-base-empty-namespace))
-  (parameterize ([current-namespace ns]
-                 [current-module-declare-name modpath])
-    (eval #`(module dummy racket/base
-              (define #,sym 'dummy)))
-    (namespace-syntax-introduce (datum->syntax #f sym)
-                                (module->namespace modpath))))
+  (syntax-binding-set->syntax
+   (syntax-binding-set-extend (syntax-binding-set) sym 0 modpath)
+   sym))
 
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;  the editor.
@@ -78,7 +74,7 @@
                     (define/syntax-parse elaborator
                       (forge-identifier
                        ;syntax-local-lift-require
-                       (module-path-index-resolve elaborator-binding)
+                       elaborator-binding
                        elaborator-name))
                     #'(elaborator body)))])
        (this))])

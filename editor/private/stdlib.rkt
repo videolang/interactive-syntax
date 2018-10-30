@@ -838,5 +838,26 @@
   (define-editor window$ vertical-block$
     (inherit get-context)
     (super-new)
+    (init [(if frame)])
+    (define frame if)
+    (define/public (get-frame)
+      frame)
     (define/public (show [show? #t])
-      (send (get-context) show show?))))
+      (when (get-context)
+        (send (get-context) show show?))
+      (when frame
+        (cond
+          [show?
+           (new editor-canvas% [parent frame]
+                [editor this])
+           (send frame show #t)]
+          [else
+           (send frame show #f)]))))
+
+  (define-editor dialog$ window$
+    (super-new)
+    (define result #f)
+    (define/public (get-result)
+      result)
+    (define/public (set-result! new)
+      (set! result new))))

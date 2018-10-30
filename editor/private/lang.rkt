@@ -100,10 +100,12 @@
 ;; editor-module-path? -> module-path?
 (define-for-syntax (expand-editor-req-path path)
   (match path
+    [`(from-editor ',mod)
+     `(submod ".." mod editor)]
     [`(from-editor (submod ".." ,subpath ...))
      `(submod ".." ".." ,@subpath editor)]
     [`(from-editor (submod "." ,subpath ...))
-     `(submod ".." "." ,@subpath editor)]
+     `(submod ".." ,@subpath editor)]
     [`(from-editor (submod ,subpath ...))
      `(submod ,@subpath editor)]
     [`(from-editor ,mod)
@@ -124,10 +126,11 @@
                (expand-import #'(from-editor mod-path))
                #t))
      (define expanded-modpath-stx (datum->syntax #'#f expanded-modpath))
+     (define scopes (editor/user-syntax-introduce #'mod-path))
      (add-syntax-to-editor!
       (syntax-local-introduce
-       #`((~require (for-meta phase #,(wrap-scope #'mod-path expanded-modpath-stx)))))
-      #:required? #f))
+       #`((~require (for-meta phase #,(wrap-scope scopes expanded-modpath-stx)))))
+       #:required? #f))
    #'(begin)])
 
 ;; We want to require edit-time code into the modules editor submod.
@@ -156,7 +159,7 @@
      (syntax-parse stx
        [(_ paths ...)
         #:with (expanded-paths ...) (for/list ([i (in-list (attribute paths))])
-                                      (editor/user-syntax-introduce (pre-expand-export i mode)))
+                                      (editor/user-syntax-introduce (pre-expand-export i mode) 'add))
         ;(printf "afo-post: ~s~n" #'(expanded-paths ...))
         #'(all-from-out expanded-paths ...)]))))
 

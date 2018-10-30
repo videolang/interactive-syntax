@@ -20,16 +20,17 @@
            (prefix-in gui: racket/gui/base)
            syntax/modread
            (for-editor "context.rkt"
+                       racket/class
                        (prefix-in gui: racket/gui/base)
                        racket/async-channel))
 
-  (define-editor picker$ window$
+  (define-editor picker$ dialog$
+    (inherit get-frame
+             set-result!
+             show)
     (super-new)
     (new label$ [parent this]
          [text "Select Editor"])
-
-    (init-field result-box
-                frame)
 
     (define mod-row (new horizontal-block$ [parent this]))
     (define editor-row (new horizontal-block$ [parent this]))
@@ -42,16 +43,14 @@
     (new button$ [parent confirm-row]
          [label (new label$ [text "Cancel"])]
          [callback (λ (button event)
-                     (send this show #f)
-                     (send frame show #f))])
+                     (show #f))])
     (new button$ [parent confirm-row]
          [label (new label$ [text "OK"])]
          [callback (λ (b event)
-                     (set-box! result-box
-                               (cons (send mod-name get-text)
-                                     (send editor-name get-text)))
-                     (send this show #f)
-                     (send frame show #f))])
+                     (set-result!
+                      (cons (send mod-name get-text)
+                            (send editor-name get-text)))
+                     (show #f))])
 
     (define mod-name (new field$ [parent mod-row]))
     (define editor-name (new field$ [parent editor-row])))
@@ -59,16 +58,12 @@
   (begin-for-editor
     (provide get-module)
     (define (get-module [parent #f])
-      (define res (box #f))
       (define f (new gui:dialog% [parent parent]
                      [label "Editor Selector"]))
       (define p (new picker$
-                     [result-box res]
                      [frame f]))
-      (new editor-canvas% [parent f]
-           [editor p])
-      (send f show #t)
-      (unbox res)))
+      (send p show #t)
+      (send p get-result)))
 
   (define insert-button
     (list "Insert Editor"
