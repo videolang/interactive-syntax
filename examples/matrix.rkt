@@ -4,6 +4,8 @@
          math/matrix
          racket/class
          data/gvector
+         (for-syntax racket/base
+                     racket/syntax)
          (for-editor racket/math
                      racket/match
                      data/gvector))
@@ -115,10 +117,11 @@
   (define-state state (new matrix-state$)
     #:getter #t)
   (define-elaborate this
-    (define state (send this get-state))
-    (vector->matrix (send state get-height)
-                    (send state get-width)
-                    (gvector->vector (send state get-values))))
+    #'(let ()
+        (define state (send this get-state))
+        (vector->matrix (send state get-height)
+                        (send state get-width)
+                        (gvector->vector (send state get-values)))))
   (define/public (on-receive sender message)
     (send state on-receive sender message)
     (send the-matrix resize-cells))

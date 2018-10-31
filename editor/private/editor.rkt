@@ -177,7 +177,7 @@
          (~seq (~or plain-state:defstate
                     (~optional elaborator:defelaborate
                                #:defaults ([elaborator.data #'this]
-                                           [(elaborator.body 1) (list #'this)]))
+                                           [(elaborator.body 1) (list #'#'this)]))
                     internal-body) ...)
          (~seq body ...)))
      #:with elaborator-name (format-id #'orig-stx "~a:elaborate" #'name)
@@ -212,11 +212,10 @@
                 '())
          (define-syntax-parser elaborator-name
            [(_ data)
-            #`(let ()
-                (define elaborator.data
-                  (parameterize ([current-load-relative-directory (this-mod-dir)])
-                    (deserialize 'data)))
-                elaborator.body ...)])
+            #:with elaborator.data (syntax-local-lift-expression
+                                    #'(parameterize ([current-load-relative-directory (this-mod-dir)])
+                                        (deserialize 'data)))
+            elaborator.body ...])
          (#,@(if dd?*
                  #`(editor-submod
                     (#%require #,(quote-module-path))

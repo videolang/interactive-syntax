@@ -5,6 +5,7 @@
          racket/unit
          racket/runtime-path
          racket/list
+         racket/fasl
          syntax/modread
          drracket/tool
          framework
@@ -202,5 +203,6 @@
      (λ (text data)
        (match data
          #;[(vector elaborator editor start end)
-          (update-editors! text `(((#%editor ,elaborator ,editor) ,start ,end)))]
+          (update-editors! text `(((#%editor ,(fasl->s-exp elaborator)
+                                             ,(fasl->s-exp editor)) ,start ,end)))]
          [_ (void)])))))

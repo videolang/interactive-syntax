@@ -1,7 +1,8 @@
 #lang racket/base
 
 (provide (all-defined-out))
-(require racket/match)
+(require racket/match
+         racket/fasl)
 
 (define (expansion-monitor callback directory source custodian)
   (define receiver (make-log-receiver (current-logger)
@@ -16,8 +17,8 @@
                   (vector elaborator editor src
                           line col pos new-line new-col new-pos)
                   name)
-          (callback (vector (syntax->datum elaborator)
-                            (syntax->datum editor)
+          (callback (vector (s-exp->fasl (syntax->datum elaborator))
+                            (s-exp->fasl (syntax->datum editor))
                             pos new-pos))]
          [_ (void)])
        (loop)))))
