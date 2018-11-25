@@ -142,6 +142,8 @@
                (~alt (~optional (~seq #:persistence persistence) #:defaults ([persistence #'#t]))
                      (~optional (~seq #:getter getter) #:defaults ([getter #'#f]))
                      (~optional (~seq #:setter setter) #:defaults ([setter #'#f]))
+                     (~optional (~seq #:serialize serialize) #:defaults ([serialize #'#f]))
+                     (~optional (~seq #:deserialize deserialize) #:defaults ([deserialize #'#f]))
                      (~once default))
                ...)
              #:attr name (editor-syntax-introduce (attribute marked-name))
@@ -297,11 +299,16 @@
                              (define state-vars
                                `((state.marked-name
                                   ,state.marked-name
-                                  ,state.persistence)
+                                  ,state.persistence
+                                  ,state.serialize)
                                  ...))
                              (for/hash ([var (in-list state-vars)]
                                         #:when (third var))
-                               (values (first var) (second var))))))
+                               (define val (second var))
+                               (define serial-proc (fourth var))
+                               (values (first var) (if serial-proc
+                                                       (serial-proc val)
+                                                       val))))))
                  (public/override serialize-method)
                  (define (deserialize-method data)
                    (define sup (vector-ref data 0))
@@ -310,10 +317,13 @@
                          #`(void)
                          #`(super deserialize-method sup))
                    #,@(for/list ([i (in-list (attribute state.marked-name))]
-                                 [p? (in-list (attribute state.persistence))])
+                                 [p? (in-list (attribute state.persistence))]
+                                 [d? (in-list (attribute state.deserialize))])
                         (define key (syntax->datum i))
                         #`(when (hash-has-key? table '#,key)
-                            (define other-val (hash-ref table '#,key))
+                            (define des-proc #,d?)
+                            (define maybe-other-val (hash-ref table '#,key))
+                            (define other-val (if des-proc (des-proc maybe-other-val) maybe-other-val))
                             (let ([p* #,p?])
                               (case p*
                                 [(#t) (set! #,i other-val)]

@@ -610,7 +610,7 @@
                        (send f get-hinting))))
     (define-state scale? #f)
     (send this set-background "white" 'transparent)
-    (define-state text #f
+    (define-state text ""
       #:setter (λ (t #:signal? [signal? #f])
                  (define text-size-str (if (non-empty-string? t) t "   "))
                  (match-define-values (w h _ _)
@@ -620,7 +620,7 @@
                  (set! text-height h)
                  (send this resize-content text-width text-height)
                  (when signal?
-                   (send this signal (new text-change-event% [text t]))))
+                   (send this signal (new control-event% [event-type 'text-field]))))
       #:getter #t
       #:persistence (get-persistence))
     (define/override (draw dc x y)
@@ -686,10 +686,17 @@
            [_ (void)])])))
 
   (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
+    (inherit resize-content)
     (super-new)
     (init [(il label) #f])
     (define mouse-state 'up)
-    (define-state label #f)
+    (define-state label #f
+      #:getter #t
+      #:setter (λ (l)
+                 (set! label l)
+                 (match-define-values (w h _ _ _ _)
+                   (send l get-extent (send l get-x) (send l get-y)))
+                 (resize-content w h)))
     (define-state up-color "Silver")
     (define-state hover-color "DarkGray")
     (define-state down-color "DimGray")
@@ -723,11 +730,6 @@
                (unless in-button?
                  (set! mouse-state 'up))])]
            [_ (void)])]))
-    (define/public (set-label l)
-      (set! label l)
-      (match-define-values (w h _ _ _ _)
-        (send l get-extent (send l get-x) (send l get-y)))
-      (send this resize-content w h))
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (pl pt pr pb) (send this get-padding))
@@ -750,7 +752,7 @@
       (send dc set-pen old-pen)
       (send dc set-brush old-brush))
     (when il
-      (set-label il)))
+      (set-label! il)))
 
   (define-editor toggle$ widget$
     (super-new))
@@ -775,15 +777,16 @@
 
   (define-editor field$ (focus$$ (text$$ (padding$$ widget$)))
     #:interfaces (stretchable<$>)
+    (inherit get-extent)
     (super-new)
     (send this set-background "white")
     (define/public (get-max-extent x y)
       (match-define-values (w h _ _ _ _)
-        (send this get-extent x y))
+        (get-extent x y))
       (values +inf.0 h))
     (define/public (get-min-extent x y)
       (match-define-values (w h _ _ _ _)
-        (send this get-extent x y))
+        (get-extent x y))
       (values 0 h))
     (define-state caret 0)
     (define/override (draw dc x y)

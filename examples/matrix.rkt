@@ -6,7 +6,8 @@
          data/gvector
          (for-syntax racket/base
                      racket/syntax)
-         (for-editor racket/math
+         (for-editor racket/gui/base
+                     racket/math
                      racket/match
                      data/gvector))
 
@@ -33,10 +34,11 @@
     (gvector-set! values (+ (* row width) col) val))
   (define/public (on-receive sender event)
     (cond
-      [(is-a? event text-change-event%)
-       (set-cell! (send sender get-row)
-                  (send sender get-col)
-                  (string->number (send sender get-text)))])))
+      [(is-a? event control-event%)
+       (when (eq? (send event get-event-type) 'text-field)
+         (set-cell! (send sender get-row)
+                    (send sender get-col)
+                    (string->number (send sender get-text))))])))
 
 (define-editor cell$ field$
   (init [(ir row) 0]

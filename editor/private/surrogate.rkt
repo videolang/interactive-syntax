@@ -2,6 +2,7 @@
 
 (provide (all-defined-out))
 (require racket/class
+         (prefix-in gui: racket/gui/base)
          racket/unit
          racket/runtime-path
          racket/list
@@ -72,7 +73,11 @@
       (parameterize ([editor-read-as-snip? #t])
         (define new-ns (make-editor-namespace))
         (parameterize ([current-namespace new-ns])
-          (with-handlers ([exn:fail? (λ (e) (log-warning "~a" e))])
+          (with-handlers ([exn:fail?
+                           (λ (e)
+                             (log-warning "~a" e)
+                             (define frame (send (send text get-tab) get-frame))
+                             (send frame show-editor-error-panel (exn-message e)))])
             (define-values (mod-stx mod-name)
               (let ([stx (try-read-editor)])
                 (values stx
@@ -136,6 +141,7 @@
          (send current-editor set-mod-name! editor-mod-name))
        (loop current-editor)]))
     ;; Finally, replace their text with an actual editor snip
+    ;; Go from end of file to start to ensure the placements haven't changed.
     (send text set-file-format 'standard)
     (define sorted-editors
       (sort (set->list editors) > #:key second))
@@ -188,6 +194,50 @@
             (update-editors! text data)))
           #f))
 
+(define (editor-status-mixin super%)
+  (class super%
+    (define status-panel-parent #f)
+    (define status-panel #f)
+    (define status-editor #f)
+    (define d/i-p-p #f)
+    (define showing? #f)
+    (super-new)
+    (define/override (get-definitions/interactions-panel-parent)
+      (unless status-panel-parent
+        (set! status-panel-parent (new panel:vertical-dragable%
+                                    [parent (super get-definitions/interactions-panel-parent)]))
+        (set! status-panel (new gui:vertical-panel% [parent status-panel-parent]
+                                [style '(border)]
+                                [stretchable-width #f]
+                                [stretchable-height #f]))
+        (send status-panel-parent change-children (λ (l) '()))
+        (define horiz-row (new gui:horizontal-pane% [parent status-panel]))
+        (set! status-editor (new gui:text%))
+        (new gui:editor-canvas% [parent horiz-row]
+             [editor status-editor]
+             [line-count 3])
+        (new gui:button% [parent horiz-row]
+             [label "Close"]
+             [callback (λ (b e)
+                         (hide-editor-error-panel))])
+        (set! d/i-p-p (make-object gui:vertical-panel% status-panel-parent)))
+      d/i-p-p)
+    (define/public (show-editor-error-panel [msg ""])
+      (unless showing?
+        (send status-panel-parent change-children (λ (l) (cons status-panel l)))
+        (send status-panel-parent set-percentages
+              '(1/10 9/10))
+        (set! showing? #t))
+      (send status-editor begin-edit-sequence)
+      (send status-editor select-all)
+      (send status-editor clear)
+      (send status-editor insert msg)
+      (send status-editor end-edit-sequence))
+    (define/public (hide-editor-error-panel)
+      (when showing?
+        (send status-panel-parent change-children (λ (l) (rest l)))
+        (set! showing? #f)))))
+
 (define-runtime-path background.rkt "background.rkt")
 
 (define tool@
@@ -198,6 +248,7 @@
     (define (phase1) (void))
     (define (phase2) (void))
 
+    (drracket:get/extend:extend-unit-frame editor-status-mixin)
     (drracket:module-language-tools:add-online-expansion-monitor	
      background.rkt 'expansion-monitor
      (λ (text data)

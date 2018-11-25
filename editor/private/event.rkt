@@ -4,6 +4,7 @@
 (require racket/gui/base
          racket/class)
 
+#| Use control-event%
 (define text-change-event%
   (class event%
     (super-new)
@@ -12,3 +13,4 @@
       text)
     (define/public (set-text! t)
       (set! text t))))
+|#

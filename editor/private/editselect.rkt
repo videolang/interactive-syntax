@@ -90,7 +90,9 @@
                      (error 'editor "Could not determine the current dirrectory"))
                    (define read-path (with-input-from-string (car the-editor) read))
                    (define full-path
-                     (if (absolute-path? read-path)
+                     (if (or (not (path? read-path))
+                             (and (path? read-path)
+                                  (absolute-path? read-path)))
                          read-path
                          (build-path directory read-path)))
                    (with-handlers ([exn:fail? (λ (e)
