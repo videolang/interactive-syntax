@@ -128,18 +128,18 @@
       (define current-editor (send text find-next-non-string-snip last-editor))
       (cond
         [(not current-editor) (void)]
-      [else
-       (when (is-a? current-editor editor-snip%)
-         (define-values (binding is-same-file des-name)
-           (send current-editor editor-binding))
-         (define serial
-           (if is-same-file
-               (serialize+rehome (send current-editor get-editor) des-name)
-               (serialize (send current-editor get-editor))))
-         (send current-editor set-editor! (eval `(deserialize ',serial) editor-namespace))
-         (send current-editor set-namespace! editor-namespace)
-         (send current-editor set-mod-name! editor-mod-name))
-       (loop current-editor)]))
+        [else
+         (when (is-a? current-editor editor-snip%)
+           (define-values (binding is-same-file des-name)
+             (send current-editor editor-binding))
+           (define serial
+             (if is-same-file
+                 (serialize+rehome (send current-editor get-editor) des-name)
+                 (serialize (send current-editor get-editor))))
+           (send current-editor set-editor! (eval `(deserialize ',serial) editor-namespace))
+           (send current-editor set-namespace! editor-namespace)
+           (send current-editor set-mod-name! editor-mod-name))
+         (loop current-editor)]))
     ;; Finally, replace their text with an actual editor snip
     ;; Go from end of file to start to ensure the placements haven't changed.
     (send text set-file-format 'standard)

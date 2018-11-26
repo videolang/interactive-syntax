@@ -19,19 +19,19 @@
 
 (define (open-paren-char? par)
   (case par
-    [(#\( "(" #\[ "[" #\{ "{") #t]
+    [(\( #\( "(" \[ #\[ "[" \{ #\{ "{") #t]
     [else #f]))
 
 (define (close-paren-char? par)
   (case par
-    [(#\) ")" #\] "]" #\} "}") #t]
+    [(\) #\) ")" \] #\] "]" \} #\} "}") #t]
     [else #f]))
 
 (define (close->open-paren par)
   (case par
-    [(#\) ")") "("]
-    [(#\] "]") "["]
-    [(#\} "}") "{"]))
+    [(#\) ")" \)) '|(|]
+    [(#\] "]" \]) '|[|]
+    [(#\} "}" \}) '|{|]))
 
 (define editor-finish "ditor")
 (define editor-str (string-append "#e" "ditor"))
@@ -122,11 +122,11 @@
        (cond
          [(eof-object? text*)
           (values new-text 'error #f start end)]
-         [(open-paren-char? text*)
-          (define new-table (cons text* par-stack))
+         [(open-paren-char? p)
+          (define new-table (cons p par-stack))
           (loop new-text new-table e read-elaborator?)]
-         [(close-paren-char? text*)
-          (define open-par (close->open-paren text*))
+         [(close-paren-char? p)
+          (define open-par (close->open-paren p))
           (cond
             [(and (not (empty? par-stack))
                   (equal? open-par (car par-stack)))
