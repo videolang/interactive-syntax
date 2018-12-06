@@ -34,7 +34,13 @@
        (λ (key default)
          (case key
            [(color-lexer) lex-editor]
-           [(definitions-text-surrogate) 'editor/private/surrogate]
+           [(definitions-text-surrogate-list)
+            (define base-list
+              (or (defproc key default)
+                  (let* ([alt (defproc 'definitions-text-surrogate default)])
+                    (and alt (list alt)))))
+            (and base-list
+                 (cons 'editor/private/surrogate base-list))]
            [(drracket:toolbar-buttons)
             (list (dynamic-require 'editor/private/surrogate 'toggle-button)
                   (dynamic-require 'editor/private/editselect 'insert-button))]

@@ -367,6 +367,33 @@
         ;; Like next-child-focus, but goes to the previous focusable child instead.
         (previous-child-focus (->*m () (#:wrap boolean?) (or/c (is-a?/c editor<$>) #f))))))
 
+  (define-editor pasteboard$ widget$
+    #:interfaces (parent<$>)
+    (super-new)
+    (define-state children (set))
+    (define focus #f)
+    (define/public (add-child child)
+      (set! children (set-add children child)))
+    (define/public (remove-child child)
+      (set! children (set-remove children child)))
+    (define/public (set-child-focus [child #f])
+      (error "TODO"))
+    (define/public (next-child-focus [wrap #f])
+      (error "TODO"))
+    (define/public (previous-child-focus [wrap #f])
+      (error "TODO"))
+    (define/public (child-focus-changed child)
+      (error "TODO"))
+    (define/public (resized-child child)
+      (error "TODO"))
+    (define/override (get-extent x y)
+      (for/fold ([min-width 0]
+                 [min-height 0])
+                ([child (in-set children)])
+        (error "TODO")))
+    (define/override (draw dc x y)
+      (error "TODO")))
+  
   ;; Generic list collection, used by other editors such as vertical-block$
   ;; and horizontal-block$.
   (define-editor-mixin list-block$$
