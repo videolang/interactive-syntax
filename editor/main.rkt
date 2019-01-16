@@ -34,6 +34,8 @@
        (λ (key default)
          (case key
            [(color-lexer) lex-editor]
+           [(definitions-text-surrogate)
+            'editor/private/surrogate]
            [(definitions-text-surrogate-list)
             (define base-list
               (or (defproc key default)
