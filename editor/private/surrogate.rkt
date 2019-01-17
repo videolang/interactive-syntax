@@ -7,6 +7,7 @@
          racket/runtime-path
          racket/list
          racket/fasl
+         racket/path
          syntax/modread
          drracket/tool
          framework
@@ -118,7 +119,9 @@
                      #:height (toolbar-icon-height)))
 
 (define (update-editors! text editors)
-  (parameterize ([editor-read-as-snip? #t])
+  (define filename (send text get-filename))
+  (parameterize ([editor-read-as-snip? #t]
+                 [current-directory (if filename (path-only filename) (current-directory))])
     (define text-surrogate (send text get-surrogate))
     (send text-surrogate reset-editor-namespace)
     (define editor-namespace (send text-surrogate get-editor-namespace))

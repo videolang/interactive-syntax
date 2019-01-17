@@ -36,7 +36,7 @@
            [(color-lexer) lex-editor]
            [(definitions-text-surrogate)
             'editor/private/surrogate]
-           [(definitions-text-surrogate-list)
+           #;[(definitions-text-surrogate-list)
             (define base-list
               (or (defproc key default)
                   (let* ([alt (defproc 'definitions-text-surrogate default)])
