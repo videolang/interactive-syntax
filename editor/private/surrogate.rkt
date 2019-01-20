@@ -8,6 +8,7 @@
          racket/list
          racket/fasl
          racket/path
+         racket/pretty
          syntax/modread
          drracket/tool
          framework
@@ -42,8 +43,8 @@
   (namespace-require 'racket/serialize ns)
   ns)
 
-(define surrogate%
-  (class* racket:text-mode% (racket:text-mode<%>)
+(define (surrogate% %)
+  (class* % (racket:text-mode<%>)
     (super-new)
     ;; Need the text object when enabled
     (define text #f)
@@ -171,24 +172,26 @@
   (list "Update Editors"
         editor-icon
         (λ (this)
-          (parameterize ([editor-read-as-snip? #t])
+          (parameterize ([editor-read-as-snip? #t]
+                         [port-count-lines-enabled #t])
             (define text (send this get-definitions-text))
             (define port #f)
             (define data (mutable-set))
             ;; First, grab the location of every editor in text
             (dynamic-wind
              (λ ()
-               (set! port (open-input-text-editor text 0 'end values text #t #:lock-while-reading? #t)))
+               (set! port (open-input-text-editor text 0 'end values text #t #:lock-while-reading? #t))
+               (port-count-lines! port))
              (λ ()
                (match-define-values (_ _ _ _ _ _ out)
                  (module-lexer port 0 #f))
                ;; This button 'should' only get clicked
                ;; when the language is editor.
                (when #t ;(eq? out lex-editor)
+                 (define lex (lex-editor #f #:fill-matches data))
                  (let loop ()
-                   (match-define-values (_ _ _ start end)
-                     (lex-editor port
-                                 #:fill-matches data))
+                   (match-define-values (_ _ _ start end _ _)
+                     (lex port))
                    (when (and start end)
                      (loop)))))
              (λ ()

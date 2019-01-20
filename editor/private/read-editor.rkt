@@ -8,7 +8,7 @@
          racket/set
          syntax/srcloc
          syntax/readerr
-         syntax-color/racket-lexer
+         syntax-color/module-lexer
          "editor.rkt"
          (for-template "editor.rkt"))
 
@@ -102,29 +102,43 @@
   (test-reader "(+ 1 #editor(1 #e2 3 4 5)())")
   (test-reader "(+ 1 #editor(1 #e2)())"))
 
-(define (lex-editor in
-                    #:fill-matches [matches #f]) ; offset mode*)
-  ;(define mode (or mode* '()))
-  (define-values (text type paren start end)
-    (racket-lexer in))
+(define ((lex-editor base-lexer* #:fill-matches [matches #f])
+         in [offset 0] [mode #f])
+  (define base-lexer
+    (cond
+      [(not base-lexer*)
+       module-lexer]
+      [(procedure-arity-includes? base-lexer* 3)
+       base-lexer*]
+      [else (λ (in offset mode)
+              (apply values
+                     (append (call-with-values (λ () (base-lexer in)) list)
+                             (list 0 #f))))]))
+  (define-values (text type paren start end backup new-mode)
+    (base-lexer in offset mode))
   (cond
     [(and (equal? text editor-str)
           (open-paren-char? (peek-char in)))
      (let loop ([cur-text text]
                 [par-stack '()]
                 [end end]
-                [read-elaborator? #f])
-       (define-values (text* type* p s e)
-         (racket-lexer in))
+                [read-elaborator? #f]
+                [mode new-mode])
+       (define-values (text* type* p s e b n)
+         (base-lexer in offset mode))
+       (define new-backup
+         (if (= backup 0)
+             0
+             (+ backup (- end start))))
        (define new-text (if (string? text*)
                             (string-append cur-text text*)
                             cur-text))
        (cond
          [(eof-object? text*)
-          (values new-text 'error #f start end)]
+          (values new-text 'error #f start end new-backup n)]
          [(open-paren-char? p)
           (define new-table (cons p par-stack))
-          (loop new-text new-table e read-elaborator?)]
+          (loop new-text new-table e read-elaborator? n)]
          [(close-paren-char? p)
           (define open-par (close->open-paren p))
           (cond
@@ -136,14 +150,14 @@
                    [read-elaborator?
                     (when matches
                       (set-add! matches (list new-text start e)))
-                    (values new-text 'parenthesis #f start e)]
-                   [else (loop new-text new-stack e #t)])
-                 (loop new-text new-stack e read-elaborator?))]
+                    (values new-text 'parenthesis #f start e new-backup n)]
+                   [else (loop new-text new-stack e #t n)])
+                 (loop new-text new-stack e read-elaborator? n))]
             [else
-             (values new-text 'error #f start end)])]
-         [else (loop new-text par-stack e read-elaborator?)]))]
+             (values new-text 'error #f start end new-backup new-mode)])]
+         [else (loop new-text par-stack e read-elaborator? n)]))]
     [else
-     (values text type paren start end)]))
+     (values text type paren start end backup new-mode)]))
 
 (module+ test
  (define (test-color-lexer str)
