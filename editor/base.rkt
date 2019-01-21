@@ -10,6 +10,7 @@
     "private/editor.rkt"
     "private/stdlib.rkt"
     (for-editor "private/lang.rkt"
+                "private/context.rkt"
                 (from-editor "private/stdlib.rkt")))
 
   (provide (~all-from-out "private/stdlib.rkt")

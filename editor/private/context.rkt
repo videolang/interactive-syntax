@@ -24,13 +24,15 @@
     resize
     recount
     alert
-    show))
+    show
+    get-path))
 
 ;; ===================================================================================================
 
 (define editor-canvas%
   (class* canvas% (editor-context<$>)
     (init-field editor)
+    (inherit min-height min-width refresh)
     (match-define-values (width height _ _ _ _)
       (send editor get-extent 0 0))
     (super-new [min-width (exact-ceiling width)]
@@ -41,8 +43,8 @@
                                  (send editor draw dc 0 0)
                                  (match-define-values (width height _ _ _ _)
                                    (send editor get-extent (send editor get-x) (send editor get-y)))
-                                 (send this min-width (exact-ceiling width))
-                                 (send this min-height (exact-ceiling height)))])
+                                 (min-width (exact-ceiling width))
+                                 (min-height (exact-ceiling height)))])
     (send editor set-context this)
     (define/public (resize . _)
       (void))
@@ -52,10 +54,12 @@
       (error "TODO"))
     (define/override (on-event event)
       (send editor on-event event 0 0)
-      (send this refresh))
+      (refresh))
     (define/override (on-char event)
       (send editor on-event event 0 0)
-      (send this refresh))))
+      (refresh))
+    (define/public (get-path)
+      #f)))
 
 ;; ===================================================================================================
 
@@ -64,8 +68,8 @@
 ;; Editor snip and snipclass implementations
 
 (define editor-snip%
-  (class* snip% (readable-snip<%>)
-    (inherit get-flags set-flags set-snipclass)
+  (class* snip% (editor-context<$> readable-snip<%>)
+    (inherit get-flags set-flags set-snipclass get-admin)
     ;; editor contains the actual interactive editor.
     (init-field editor
                 ;; Serial is only if it cannot yet be processed because
@@ -76,15 +80,37 @@
                 [mod-name #f]
                 ;; The namespace for the editor under edit
                 [namespace #f])
+    (when editor
+      (send editor set-context this))
     (super-new)
-    (set-flags (cons 'handles-events (get-flags)))
+    (set-flags (list* 'handles-events
+                      'uses-editor-path
+                      'width-depends-on-x
+                      'width-depends-on-y
+                      'height-depends-on-x
+                      'height-depends-on-y
+                      (get-flags)))
     (set-snipclass editor-snip-class)
     (send (get-the-snip-class-list) add editor-snip-class)
+    (define/public (get-path)
+      (define admin (get-admin))
+      (cond
+        [admin
+         (define ctx (send admin get-editor))
+         (define b (box #f))
+         (define filename (send ctx get-filename b))
+         (and (not (unbox b))
+              filename)]
+        [else #f]))
     (define/public (get-editor)
       editor)
     (define/public (set-editor! e)
+      (when editor
+        (send editor set-context #f))
       (set! editor e)
-      (define admin (send this get-admin))
+      (when e
+        (send e set-context this))
+      (define admin (get-admin))
       (when admin
         (send admin resized this #t)))
     (define/public (set-namespace! ns)
@@ -112,14 +138,14 @@
       (init-editor)
       (send editor get-extent x y) ;; TODO, remove this
       (send editor on-event event x y)
-      (define admin (send this get-admin))
+      (define admin (get-admin))
       (when admin
         (send admin resized this #t)))
     (define/override (on-event dc x y ex ey event)
       (init-editor)
       (send editor get-extent x y) ;; TODO, remove this
       (send editor on-event event x y)
-      (define admin (send this get-admin))
+      (define admin (get-admin))
       (when admin
         (send admin resized this #t)))
     (define/override (copy)
@@ -161,7 +187,7 @@
       ;; Disregarding flattened? ...
       (format "#editor~s~s" binding serial))
     (define/private (maybe-get-filename)
-      (define maybe-admin (send this get-admin))
+      (define maybe-admin (get-admin))
       (define maybe-filename
         (cond [maybe-admin
                (define editor (send maybe-admin get-editor))
@@ -182,7 +208,13 @@
                             (vector src line col pos (string-length (format "~s" editor-datum))))]))
     (define/override (write f)
       (define text (string->bytes/utf-8 (get-text 0 0)))
-      (send f put text))))
+      (send f put text))
+    (define/public (alert . _)
+      (error "TODO"))
+    (define/public (recount . _)
+      (error "TODO"))
+    (define/public (show show?)
+      (void))))
  
 (define editor-snip-class%
   (class snip-class%

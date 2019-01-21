@@ -75,8 +75,8 @@
        merge
        (on-state-changed (->m void?))
        (on-event (->m (is-a?/c event%) real? real? any))
-       (set-context (->m (is-a?/c editor-context<$>) void?))
-       (get-context (->m (or/c #f (is-a?/c editor-context<$>))))))
+       (set-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>)) void?))
+       (get-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>))))))
 
     ;; DC used internally for measuring text size.
     (define text-size-dc
@@ -108,9 +108,18 @@
     (define/public (description)
       "Empty Editor")
     (define/public (set-context c)
+      (log-editor-debug "Setting context to ~a" c)
       (set! context c))
     (define/public (get-context)
       context))
+
+  (define-editor-mixin get-path$$
+    (inherit get-context)
+    (super-new)
+    (define/public (get-path)
+      (define ctx (get-context))
+      (and ctx
+           (send ctx get-path))))
 
   (define-editor scroller$ base$
     (super-new)
@@ -183,7 +192,7 @@
   (define-editor float$ base$
     (super-new))
 
-  (define-editor widget$ base$
+  (define-editor widget$ (get-path$$ base$)
     (super-new)
     (init [(internal-parent parent) #f]
           [(ip persist) #f])

@@ -108,12 +108,13 @@
     ;; Ensure that #editor()() format is used
     (define prev-format #f)
     (define/override (after-save-file orig inner success?)
+      (super after-save-file orig inner success?)
       (when prev-format
         (send orig set-file-format prev-format)))
     (define/override (on-save-file orig inner filename format)
       (set! prev-format (send orig get-file-format))
       (send orig set-file-format 'text)
-      (inner filename 'text))))
+      (super on-save-file orig inner filename 'text))))
 
 (define editor-icon
   (fast-forward-icon #:color "green"
