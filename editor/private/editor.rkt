@@ -23,6 +23,8 @@
 (provide (all-defined-out)
          (all-from-out "lang.rkt"))
 
+(define EDITOR-SERIALIZE-VERSION 0)
+
 ;; Keys for hidden methods. Only functions in
 ;;   this module should access these methods directly.
 (define serial-key (generate-member-key))
@@ -239,9 +241,9 @@
                      (provide name-deserialize)
                      (define name-deserialize
                        (make-deserialize-info
-                        (λ (sup table)
+                        (λ (version args)
                           (define this (new name))
-                          (send this deserialize-method (vector sup table))
+                          (send this deserialize-method args)
                           (send this on-state-changed)
                           this)
                         (λ ()
@@ -279,7 +281,9 @@
                   ((interface* () ([prop:serializable
                                     (make-serialize-info
                                      (λ (this)
-                                       (send this serialize-method))
+                                       (vector
+                                        EDITOR-SERIALIZE-VERSION
+                                        (send this serialize-method)))
                                      deserialize-binding
                                      #t
                                      (or (current-load-relative-directory) (current-directory)))]))
@@ -295,6 +299,7 @@
                    (vector #,(if base?
                                  #'#f
                                  #`(super serialize-method))
+                           'name
                            (let ()
                              (define state-vars
                                `((state.marked-name
@@ -312,23 +317,32 @@
                  (public/override serialize-method)
                  (define (deserialize-method data)
                    (define sup (vector-ref data 0))
-                   (define table (vector-ref data 1))
+                   (define key (vector-ref data 1))
+                   (define table (vector-ref data 2))
                    #,(if base?
                          #`(void)
-                         #`(super deserialize-method sup))
-                   #,@(for/list ([i (in-list (attribute state.marked-name))]
-                                 [p? (in-list (attribute state.persistence))]
-                                 [d? (in-list (attribute state.deserialize))])
-                        (define key (syntax->datum i))
-                        #`(when (hash-has-key? table '#,key)
-                            (define des-proc #,d?)
-                            (define maybe-other-val (hash-ref table '#,key))
-                            (define other-val (if des-proc (des-proc maybe-other-val) maybe-other-val))
-                            (let ([p* #,p?])
-                              (case p*
-                                [(#t) (set! #,i other-val)]
-                                [(#f) (void)]
-                                [else (set! #,i (p* #,i other-val))])))))
+                         #`(super deserialize-method (if (eq? 'name key)
+                                                         sup
+                                                         data)))
+                   (unless (eq? key 'name)
+                     (log-editor-warning "Missing data for key ~a, trying super"
+                                         'name))
+                   (when (eq? key 'name)
+                     (void)
+                     #,@(for/list ([i (in-list (attribute state.marked-name))]
+                                   [p? (in-list (attribute state.persistence))]
+                                   [s? (in-list (attribute state.setter))]
+                                   [d? (in-list (attribute state.deserialize))])
+                          (define key (syntax->datum i))
+                          #`(when (hash-has-key? table '#,key)
+                              (define des-proc #,d?)
+                              (define maybe-other-val (hash-ref table '#,key))
+                              (define other-val (if des-proc (des-proc maybe-other-val) maybe-other-val))
+                              (let ([p* #,p?])
+                                (case p*
+                                  [(#t) (set! #,i other-val)]
+                                  [(#f) (void)]
+                                  [else (set! #,i (p* #,i other-val))]))))))
                  (public/override deserialize-method)
                  (define (copy-method other)
                    #,(if base?

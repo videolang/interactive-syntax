@@ -288,7 +288,7 @@
       (set! content-height h)
       (define c (send this get-context))
       (when c
-        (send c resize))
+        (send c resize w h))
       (when parent
         (send parent resized-child this)))
     (define/override (get-extent x y)
