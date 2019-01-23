@@ -215,7 +215,7 @@
       (super resize w h)
       (define a (get-admin))
       (when a
-        (send a resized #t)))
+        (send a resized this #t)))
     (define/public (recount . _)
       (error "TODO"))
     (define/public (show show?)

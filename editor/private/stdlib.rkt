@@ -722,7 +722,7 @@
            [_ (void)])])))
 
   (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
-    (inherit resize-content)
+    (inherit resize-content has-focus?)
     (super-new)
     (init [(il label) #f])
     (define mouse-state 'up)
@@ -790,8 +790,53 @@
     (when il
       (set-label! il)))
 
-  (define-editor toggle$ widget$
-    (super-new))
+  (define-editor toggle$ (signaler$$ (focus$$ (padding$$ widget$)))
+    (inherit resize-content has-focus?)
+    (super-new)
+    (define-state value #t
+      #:getter #t
+      #:setter #t)
+    (define-state mouse-state 'up)
+    (define-state up-color "Silver")
+    (define-state focus-color "LightSkyBlue")
+    (define-state down-color "DeepSkyBlue")
+    (resize-content 20 20)
+    (define/override (on-event event x y)
+      (super on-event event x y)
+      (cond
+        [(is-a? event mouse-event%)
+         (define in-button?
+           (send this in-bounds? event))
+         (match (send event get-event-type)
+           ['left-down
+            (when (and in-button? (eq? mouse-state 'hover))
+              (set! mouse-state 'down))]
+           ['left-up
+            (when (and in-button? (eq? mouse-state 'down))
+              (set! mouse-state 'up)
+              (define control-event (new control-event% [event-type 'check-box]))
+              (send this signal control-event))])]))
+    (define/override (draw dc x y)
+      (super draw dc x y)
+      (define-values (pl pt pr pb) (send this get-padding))
+      (define-values (ml mt mr mb) (send this get-margin))
+      (define-values (cw ch) (send this get-content-extent))
+      (define mx (+ x ml))
+      (define my (+ y mt))
+      (define old-pen (send dc get-pen))
+      (define old-brush (send dc get-brush))
+      (send dc set-pen
+            (new pen% [width 1]))
+      (send dc set-brush
+            (new brush% [color (make-object color%
+                                 (cond
+                                   [(has-focus?) focus-color]
+                                   [value down-color]
+                                   [else up-color]))]))
+      (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
+      ;(send label draw dc (+ mx pl) (+ my pt))
+      (send dc set-pen old-pen)
+      (send dc set-brush old-brush)))
 
   (define-editor radio$ (list-block$$ widget$)
     (super-new))
