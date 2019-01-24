@@ -793,7 +793,7 @@
   (define-editor toggle$ (signaler$$ (focus$$ (padding$$ widget$)))
     (inherit resize-content has-focus?)
     (super-new)
-    (define-state value #t
+    (define-state value #f
       #:getter #t
       #:setter #t)
     (define-state mouse-state 'up)
@@ -807,15 +807,21 @@
         [(is-a? event mouse-event%)
          (define in-button?
            (send this in-bounds? event))
+         (writeln (send event get-event-type))
+         (writeln in-button?)
+         (writeln mouse-state)
+         (newline)
          (match (send event get-event-type)
            ['left-down
-            (when (and in-button? (eq? mouse-state 'hover))
+            (when in-button?
               (set! mouse-state 'down))]
            ['left-up
             (when (and in-button? (eq? mouse-state 'down))
-              (set! mouse-state 'up)
+              (set! value (not value))
               (define control-event (new control-event% [event-type 'check-box]))
-              (send this signal control-event))])]))
+              (send this signal control-event))
+            (set! mouse-state 'up)]
+           [_ (void)])]))
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (pl pt pr pb) (send this get-padding))
@@ -830,7 +836,7 @@
       (send dc set-brush
             (new brush% [color (make-object color%
                                  (cond
-                                   [(has-focus?) focus-color]
+                                   ;[(has-focus?) focus-color]
                                    [value down-color]
                                    [else up-color]))]))
       (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
