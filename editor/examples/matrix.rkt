@@ -28,8 +28,12 @@
     #:getter #t)
   (define/private (resize-matrix)
     (define new-length (* width height))
-    (for ([i (in-range (- new-length (gvector-count values)))])
-      (gvector-add! values 0)))
+    (define old-length (gvector-count values))
+    (if (new-length . > . old-length)
+        (for ([i (in-range (- new-length old-length))])
+          (gvector-add! values 0))
+        (for ([i (in-range (- old-length new-length))])
+          (gvector-remove-last! values))))
   (define/public (set-cell! row col val)
     (gvector-set! values (+ (* row width) col) val))
   (define/public (on-receive sender event)
@@ -43,6 +47,8 @@
 (define-editor cell$ field$
   (init [(ir row) 0]
         [(ic col) 0])
+  (define/override (on-event event x y)
+    (super on-event event x y))
   (define-state row ir
     #:getter #t
     #:persistence #f)
@@ -170,3 +176,4 @@
              editor/private/context)
     (define matrix (new matrix$))
     (new editor-snip% [editor matrix])))
+

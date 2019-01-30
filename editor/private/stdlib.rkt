@@ -353,7 +353,7 @@
         ;; Adds a new child to the collection
         (add-child (->m (is-a?/c editor<$>) any))
         ;; Remove an existing child from the collection
-        (remove-child (->m (is-a?/c editor<$>) any))
+        (remove-child (->*m () ((is-a?/c editor<$>)) any))
         ;; Call (generally from a child) when they have been resized.
         ;; This gives the parent a chance to adjust its other children.
         (resized-child (->m (is-a?/c editor<$>) any))
@@ -383,10 +383,10 @@
     (define focus #f)
     (define/public (add-child child)
       (set! children (set-add children child)))
-    (define/public (remove-child child)
+    (define/public (remove-child [child #f])
       (set! children (set-remove children child)))
     (define/public (set-child-focus [child #f])
-      (error "TODO"))
+      (error "set child focus, TODO"))
     (define/public (next-child-focus [wrap #f])
       (error "TODO"))
     (define/public (previous-child-focus [wrap #f])
@@ -510,11 +510,11 @@
              [else (loop (add1 i) looped-back?)])])))
     (define/public (previous-child-focus #:wrap [wrap? #t])
       (define start (or focus (length editor-list)))
-      (error "TODO"))
+      (error "prev-child-focus, TODO"))
     (define/public (get-min-extent x y)
-      (error "TODO"))
+      (error "min-extent TODO"))
     (define/public (get-max-extent x y)
-      (error "TODO"))
+      (error "max-extent TODO"))
     (define/public (get-child-extents sx sy)
       (if uniform-child-size?
           (get-uniform-child-extents sx sy uniform-child-size?)
@@ -626,7 +626,6 @@
   (define-editor-mixin text$$
     #:mixins (signaler$$)
     (inherit get-persistence)
-    (super-new)
     (init [(internal-font font) normal-control-font]
           [(internal-text text) ""])
     (define-state text-width 0)
@@ -645,7 +644,6 @@
                        (send f get-size-in-pixels)
                        (send f get-hinting))))
     (define-state scale? #f)
-    (send this set-background "white" 'transparent)
     (define-state text ""
       #:setter (λ (t #:signal? [signal? #f])
                  (define text-size-str (if (non-empty-string? t) t "   "))
@@ -659,6 +657,7 @@
                    (send this signal (new control-event% [event-type 'text-field]))))
       #:getter #t
       #:persistence (get-persistence))
+    (super-new)
     (define/override (draw dc x y)
       (super draw dc x y)
       (define-values (l t r b) (send this get-margin))
@@ -666,6 +665,7 @@
       (send dc set-font (send this get-font))
       (send dc draw-text text (+ l x) (+ t y))
       (send dc set-font old-font))
+    (send this set-background "white" 'transparent)
     (set-text! internal-text)
     (set-font internal-font))
 
@@ -702,9 +702,9 @@
 
   (define-editor-mixin focus$$
     #:interfaces (focus<$>)
-    (super-new)
     (define-state focus? #f)
     (define mouse-state 'up)
+    (super-new)
     (define/public (has-focus?)
       focus?)
     (define/public (set-focus f)
@@ -864,7 +864,10 @@
 
   (define-editor field$ (focus$$ (text$$ (padding$$ widget$)))
     #:interfaces (stretchable<$>)
-    (inherit get-extent)
+    (inherit get-extent
+             get-text
+             set-text!
+             get-persistence)
     (super-new)
     (send this set-background "white")
     (define/public (get-max-extent x y)
@@ -875,11 +878,12 @@
       (match-define-values (w h _ _ _ _)
         (get-extent x y))
       (values 0 h))
-    (define-state caret 0)
+    (define-state caret 0
+      #:persistence (get-persistence))
     (define/override (draw dc x y)
       (super draw dc x y)
       (when (send this has-focus?)
-        (define t (send this get-text))
+        (define t (get-text))
         (define car-str (substring t 0 caret))
         (match-define-values (cx cy _ _)
           (send text-size-dc get-text-extent car-str (send this get-font)))
@@ -891,7 +895,7 @@
       (draw dc x y))
     (define/override (on-event event x y)
       (super on-event event x y)
-      (define text (send this get-text))
+      (define text (get-text))
       (cond
         [(is-a? event key-event%)
          (when (send this has-focus?)
@@ -904,13 +908,15 @@
              [(or #\newline #\return)
               (void)]
              [#\backspace
-              (send this set-text! (format "~a~a"
-                                          (substring text 0 (max 0 (sub1 caret)))
-                                          (substring text caret))
-                    #:signal? #t)
-              (set! caret (max 0 (sub1 caret)))]
+              (define old-caret caret)
+              (set! caret (max 0 (sub1 caret)))
+              (set-text! (format "~a~a"
+                                 (substring text 0 (max 0 (sub1 old-caret)))
+                                 (substring text old-caret))
+                         #:signal? #t)
+              ]
              [#\rubout
-              (error "TODO")
+              (error "Delete key: TODO")
               #;(set! text
                       (format "~a~a"
                               (substring text 0 caret)
@@ -923,7 +929,10 @@
                                           (substring text caret))
                     #:signal? #t)
               (set! caret (add1 caret))]
-             [_ (void)]))])))
+             [_ (void)]))]))
+    (let ([t (get-text)])
+      (when t
+        (set! caret (string-length t)))))
 
   (define-editor window$ vertical-block$
     (inherit get-context)

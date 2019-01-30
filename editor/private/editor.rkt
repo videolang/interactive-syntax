@@ -42,8 +42,9 @@
            syntax/modresolve
            (for-syntax racket/base))
   (define-syntax (this-mod-dir stx)
-    #'(modpath->relpath (resolve-module-path-index
-                         (module-path-index-join "here.rkt" #f))))
+    (syntax/loc stx
+      (modpath->relpath (resolve-module-path-index
+                         (module-path-index-join "here.rkt" #f)))))
   (define (modpath->relpath modpath)
     (if (path-string? modpath)
         (path-only modpath)
