@@ -41,14 +41,14 @@
            syntax/parse/define
            syntax/modresolve
            (for-syntax racket/base))
-  (define-syntax (this-mod-dir stx)
-    (syntax/loc stx
-      (modpath->relpath (resolve-module-path-index
-                         (module-path-index-join "here.rkt" #f)))))
   (define (modpath->relpath modpath)
     (if (path-string? modpath)
         (path-only modpath)
-        modpath)))
+        modpath))
+  (define-syntax (this-mod-dir stx)
+    (syntax/loc stx
+      (modpath->relpath (resolve-module-path-index
+                         (module-path-index-join "here.rkt" #f))))))
 (require 'm->r (for-syntax 'm->r))
 
 ;; Because deserialized editors use a pseudo-identifier
@@ -215,12 +215,6 @@
                             (when (and b (box? b))
                               (set-box! b (cons #'name (unbox b)))))))
                 '())
-         (define-syntax-parser elaborator-name
-           [(_ data)
-            #:with elaborator.data (syntax-local-lift-expression
-                                    #'(parameterize ([current-load-relative-directory (this-mod-dir)])
-                                        (deserialize 'data)))
-            elaborator.body ...])
          (#,@(if dd?*
                  #`(editor-submod
                     (#%require #,(quote-module-path))
@@ -358,7 +352,13 @@
                    (list this-modpath 'name))
                  (public/override modpath-method)
                  (define/public (state-methods) state.marked-name) ...
-                 marked-body ...))))))]))
+                 marked-body ...)))))
+         (define-syntax-parser elaborator-name
+           [(_ data)
+            #:with elaborator.data (syntax-local-lift-expression
+                                    #'(parameterize ([current-load-relative-directory (this-mod-dir)])
+                                        42 #;(deserialize 'data)))
+            elaborator.body ...]))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
