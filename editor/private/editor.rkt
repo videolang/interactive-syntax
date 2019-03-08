@@ -357,7 +357,7 @@
            [(_ data)
             #:with elaborator.data (syntax-local-lift-expression
                                     #'(parameterize ([current-load-relative-directory (this-mod-dir)])
-                                        42 #;(deserialize 'data)))
+                                        (deserialize 'data)))
             elaborator.body ...]))]))
 
 (define-syntax (define-base-editor* stx)
