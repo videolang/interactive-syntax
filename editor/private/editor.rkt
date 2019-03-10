@@ -355,7 +355,9 @@
                  marked-body ...)))))
          (define-syntax-parser elaborator-name
            [(_ data)
-            #:with elaborator.data (syntax-local-lift-expression
+            #:with elaborator.data (values ;syntax-local-lift-expression
+                                    ;; syntax-local-lift-expression seems to
+                                    ;; mis-order lifts. :(
                                     #'(parameterize ([current-load-relative-directory (this-mod-dir)])
                                         (deserialize 'data)))
             elaborator.body ...]))]))
