@@ -21,7 +21,8 @@
                      racket/path
                      syntax/parse))
 (provide (all-defined-out)
-         (all-from-out "lang.rkt"))
+         (all-from-out "lang.rkt")
+         (for-syntax all-defined-out))
 
 (define EDITOR-SERIALIZE-VERSION 0)
 
@@ -357,12 +358,17 @@
            [(_ data-id)
             #:with elaborator.data #'data-id
             elaborator.body ...])
-         (define-syntax-parser elaborator-name
-           [(_ data)
-            #'(splicing-let ([data-id
-                              (parameterize ([current-load-relative-directory (this-mod-dir)])
-                                (deserialize 'data))])
-                (elaborator-inside data-id))]))]))
+         (define-syntax elaborator-name
+           (elaborator-transformer #'elaborator-inside)))]))
+
+(define-for-syntax (elaborator-transformer inside)
+  (syntax-parser
+    [(_ data)
+     #:with elaborator-inside inside
+     #'(splicing-let ([data-id
+                       (parameterize ([current-load-relative-directory (this-mod-dir)])
+                         (deserialize 'data))])
+         (elaborator-inside data-id))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
