@@ -353,14 +353,16 @@
                  (public/override modpath-method)
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
+         (define-syntax-parser elaborator-inside
+           [(_ data-id)
+            #:with elaborator.data #'data-id
+            elaborator.body ...])
          (define-syntax-parser elaborator-name
            [(_ data)
-            #:with elaborator.data (values ;syntax-local-lift-expression
-                                    ;; syntax-local-lift-expression seems to
-                                    ;; mis-order lifts. :(
-                                    #'(parameterize ([current-load-relative-directory (this-mod-dir)])
-                                        (deserialize 'data)))
-            elaborator.body ...]))]))
+            #'(splicing-let ([data-id
+                              (parameterize ([current-load-relative-directory (this-mod-dir)])
+                                (deserialize 'data))])
+                (elaborator-inside data-id))]))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
