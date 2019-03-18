@@ -118,6 +118,20 @@
         (parameterize ([(send editor deserial-binding) new-modpath])
           (serialize editor #:deserialize-relative-directory rel-to)))))
 
+(define-syntax-parser define-init
+  [(_ id:id default #f)
+   (syntax/loc this-syntax
+       (define id default))]
+  [(_ id:id default #t)
+   (syntax/loc this-syntax
+     (define-init id default (λ (x) x)))]
+  [( id:id default init-proc)
+   (quasisyntax/loc this-syntax
+     (begin
+       (init [(ist id) default])
+       #`(syntax/loc this-syntax (define id (init-proc ist)))))])
+
+
 (define-syntax-parser define-getter
   [(_ _:id _:id #f)
    (syntax/loc this-syntax (void))]
@@ -140,19 +154,30 @@
   (define-syntax-class defelaborate
     #:literals (define-elaborate)
     (pattern (define-elaborate data body ...+)))
+  (define-splicing-syntax-class defstate-options
+    (pattern (~seq
+              (~alt (~optional (~seq #:persistence persistence) #:defaults ([persistence #'#t]))
+                    (~optional (~seq #:getter getter) #:defaults ([getter #'#f]))
+                    (~optional (~seq #:setter setter) #:defaults ([setter #'#f]))
+                    (~optional (~seq #:serialize serialize) #:defaults ([serialize #'#f]))
+                    (~optional (~seq #:deserialize deserialize) #:defaults ([deserialize #'#f]))
+                    (~optional (~seq #:init init) #:defaults ([init #'#f]))
+                    (~once default))
+              ...)))
   (define-syntax-class defstate
     #:literals (define-state)
     (pattern (define-state marked-name:id
-               (~alt (~optional (~seq #:persistence persistence) #:defaults ([persistence #'#t]))
-                     (~optional (~seq #:getter getter) #:defaults ([getter #'#f]))
-                     (~optional (~seq #:setter setter) #:defaults ([setter #'#f]))
-                     (~optional (~seq #:serialize serialize) #:defaults ([serialize #'#f]))
-                     (~optional (~seq #:deserialize deserialize) #:defaults ([deserialize #'#f]))
-                     (~once default))
-               ...)
+               options:defstate-options)
              #:attr name (editor-syntax-introduce (attribute marked-name))
              #:attr getter-name (format-id this-syntax "get-~a" #'name)
-             #:attr setter-name (format-id this-syntax "set-~a!" #'name))))
+             #:attr setter-name (format-id this-syntax "set-~a!" #'name)
+             #:attr default #'options.default
+             #:attr init #'options.init
+             #:attr persistence #'options.persistence
+             #:attr getter #'options.getter
+             #:attr setter #'options.setter
+             #:attr serialize #'options.serialize
+             #:attr deserialize #'options.deserialize)))
 
 (define-syntax-parameter define-elaborate
   (syntax-parser
@@ -255,7 +280,7 @@
                    [st:defstate
                     #`(begin
                         #,(syntax/loc #'st
-                            (define st.marked-name st.default))
+                            (define-init st.marked-name st.default st.init))
                         #,(syntax/loc #'st
                             (define-getter st.marked-name st.getter-name st.getter))
                         #,(syntax/loc #'st

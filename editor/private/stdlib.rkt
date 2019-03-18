@@ -22,6 +22,7 @@
                        racket/serialize
                        racket/contract/base
                        racket/string
+                       racket/dict
                        file/convertible
                        racket/math
                        (except-in racket/gui/base
@@ -64,8 +65,8 @@
          (list (λ (this other rec)
                  (equal? (serialize this)
                          (serialize other)))
-               (λ (this rec) (equal-hash-code this))
-               (λ (this req) (equal-secondary-hash-code this)))])
+               (λ (this rec) (equal-hash-code (serialize this)))
+               (λ (this req) (equal-secondary-hash-code (serialize this))))])
        partial-extent
        (get-extent (->m real? real? (values real? real? real? real? real? real?)))
        (resize (->m real? real? any/c))
@@ -351,9 +352,11 @@
     (define parent<$>
       (interface ()
         ;; Adds a new child to the collection
-        (add-child (->m (is-a?/c editor<$>) any))
+        (add-child (or/c (->m (is-a?/c editor<$>) any)
+                         any/c))
         ;; Remove an existing child from the collection
-        (remove-child (->*m () ((is-a?/c editor<$>)) any))
+        (remove-child (or/c (->*m () ((is-a?/c editor<$>)) any)
+                            any/c))
         ;; Call (generally from a child) when they have been resized.
         ;; This gives the parent a chance to adjust its other children.
         (resized-child (->m (is-a?/c editor<$>) any))
@@ -379,29 +382,72 @@
   (define-editor pasteboard$ widget$
     #:interfaces (parent<$>)
     (super-new)
-    (define-state children (set))
+    (define-state children (hash))
     (define focus #f)
-    (define/public (add-child child)
-      (set! children (set-add children child)))
+    (define/public (add-child child [x 0] [y 0])
+      (set! children (hash-set children child (cons x y))))
     (define/public (remove-child [child #f])
-      (set! children (set-remove children child)))
+      (define elem
+        (or child (let ([k (dict-iterate-first children)])
+                    (and k (dict-iterate-key k)))))
+      (when elem
+        (set! children (dict-remove children elem))
+        (when (equal? focus elem)
+          (set! focus #f))))
+    (define/public (get-focus)
+      focus)
+    (define/public (set-focus [child #f])
+      (set! focus child))
+    (define/public (move-child child new-x new-y)
+      (set! children
+            (dict-update children child (cons new-x new-y))))
     (define/public (set-child-focus [child #f])
       (error "set child focus, TODO"))
-    (define/public (next-child-focus [wrap #f])
+    (define/public (next-child-focus #:wrap [wrap #f])
       (error "TODO"))
-    (define/public (previous-child-focus [wrap #f])
+    (define/public (previous-child-focus #:wrap [wrap #f])
       (error "TODO"))
     (define/public (child-focus-changed child)
       (error "TODO"))
     (define/public (resized-child child)
       (error "TODO"))
+    (define/override (on-event event x y)
+      (super on-event event x y)
+      (cond [(is-a? event mouse-event%)
+             (match (send event get-event-type)
+               ;; Set focus or move child
+               ['left-down
+                (define maybe-new-focus
+                  (for/fold ([focus #f])
+                            ([(child pos) (in-dict children)])
+                    (or (and (send child in-bounds? event)
+                             child)
+                        focus)))
+                (cond
+                  [maybe-new-focus (set! focus maybe-new-focus)]
+                  [else
+                   (when focus
+                     (set! children (dict-set children focus
+                                              (cons (send event get-x)
+                                                    (send event get-y)))))])]
+               [_ (void)])]))
     (define/override (get-extent x y)
-      (for/fold ([min-width 0]
-                 [min-height 0])
-                ([child (in-set children)])
-        (error "TODO")))
+      (define-values (w h l t r b) (super get-extent x y))
+      (for/fold ([min-width w]
+                 [min-height h]
+                 #:result (values min-width
+                                  min-height
+                                  l t r b))
+                ([(child pos) (in-dict children)])
+        (define x (car pos))
+        (define y (cdr pos))
+        (define-values (w h l t r b) (send child get-extent x y))
+        (values (max min-width (+ x w))
+                (max min-height (+ y h)))))
     (define/override (draw dc x y)
-      (error "TODO")))
+      (super draw dc x y)
+      (for ([(child pos) (in-dict children)])
+        (send child draw dc (car pos) (cdr pos)))))
   
   ;; Generic list collection, used by other editors such as vertical-block$
   ;; and horizontal-block$.
