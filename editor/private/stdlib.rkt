@@ -381,9 +381,21 @@
 
   (define-editor pasteboard$ widget$
     #:interfaces (parent<$>)
+    (inherit in-bounds?)
+    (define-state min-height 0
+      #:persistence #f
+      #:init #t)
+    (define-state min-width 0
+      #:persistence #f
+      #:init #t)
+    (define-state children (hash)
+      #:getter #t)
+    (define-state focus #f
+      #:persistence #f
+      #:getter #t
+      #:setter (λ ([child #f])
+                 (set! focus child)))
     (super-new)
-    (define-state children (hash))
-    (define focus #f)
     (define/public (add-child child [x 0] [y 0])
       (set! children (hash-set children child (cons x y))))
     (define/public (remove-child [child #f])
@@ -394,15 +406,12 @@
         (set! children (dict-remove children elem))
         (when (equal? focus elem)
           (set! focus #f))))
-    (define/public (get-focus)
-      focus)
-    (define/public (set-focus [child #f])
-      (set! focus child))
     (define/public (move-child child new-x new-y)
       (set! children
             (dict-update children child (cons new-x new-y))))
     (define/public (set-child-focus [child #f])
-      (error "set child focus, TODO"))
+      (set-focus! child)
+      (and focus #t))
     (define/public (next-child-focus #:wrap [wrap #f])
       (error "TODO"))
     (define/public (previous-child-focus #:wrap [wrap #f])
@@ -414,27 +423,28 @@
     (define/override (on-event event x y)
       (super on-event event x y)
       (cond [(is-a? event mouse-event%)
-             (match (send event get-event-type)
-               ;; Set focus or move child
-               ['left-down
-                (define maybe-new-focus
-                  (for/fold ([focus #f])
-                            ([(child pos) (in-dict children)])
-                    (or (and (send child in-bounds? event)
-                             child)
-                        focus)))
-                (cond
-                  [maybe-new-focus (set! focus maybe-new-focus)]
-                  [else
-                   (when focus
-                     (set! children (dict-set children focus
-                                              (cons (send event get-x)
-                                                    (send event get-y)))))])]
-               [_ (void)])]))
+             (when (in-bounds? event)
+               (match (send event get-event-type)
+                 ;; Set focus or move child
+                 ['left-down
+                  (define maybe-new-focus
+                    (for/fold ([focus #f])
+                              ([(child pos) (in-dict children)])
+                      (or (and (send child in-bounds? event)
+                               child)
+                          focus)))
+                  (cond
+                    [maybe-new-focus (set! focus maybe-new-focus)]
+                    [else
+                     (when focus
+                       (set! children (dict-set children focus
+                                                (cons (send event get-x)
+                                                      (send event get-y)))))])]
+                 [_ (void)]))]))
     (define/override (get-extent x y)
       (define-values (w h l t r b) (super get-extent x y))
-      (for/fold ([min-width w]
-                 [min-height h]
+      (for/fold ([min-width (max min-width w)]
+                 [min-height (max min-height h)]
                  #:result (values min-width
                                   min-height
                                   l t r b))
@@ -639,11 +649,20 @@
             [else (for/list ([i (in-list editor-list)])
                     (send i on-event event 0 0))])))
 
-  (define-editor vertical-block$ (list-block$$ widget$)
-    (super-new [x-extent max]
-               [y-extent +]
-               [x-draw (λ (acc new) acc)]
-               [y-draw +])
+  (define-editor vertical/horizontal-block$ (list-block$$ widget$)
+    (init [style 'vertical])
+    (case style
+      [(vertical)
+       (super-new [x-extent max]
+                  [y-extent +]
+                  [x-draw (λ (acc new) acc)]
+                  [y-draw +])]
+      [(horizontal)
+       (super-new [x-extent +]
+                  [y-extent max]
+                  [x-draw +]
+                  [y-draw (λ (acc new) acc)])]
+       [else (error "Not a valid style")])
     (define/override (get-extent x y)
       (super get-extent x y)
       (define-values (extents w h l t r b)
@@ -654,20 +673,11 @@
       (super draw dc x y)
       (send this draw-child dc x y)))
 
-  (define-editor horizontal-block$ (list-block$$ widget$)
-    (super-new [x-extent +]
-               [y-extent max]
-               [x-draw +]
-               [y-draw (λ (acc new) acc)])
-    (define/override (get-extent x y)
-      (super get-extent x y)
-      (define-values (extents w h l t r b)
-        (send this get-child-extents x y))
-      (log-editor-debug "Horizontal Extent: ~a" (list x y extents w h))
-      (values w h l t r b))
-    (define/override (draw dc x y)
-      (super draw dc x y)
-      (send this draw-child dc x y)))
+  (define-editor vertical-block$ vertical/horizontal-block$
+    (super-new [style 'vertical]))
+
+  (define-editor horizontal-block$ vertical/horizontal-block$
+    (super-new [style 'horizontal]))
 
   (define-editor-mixin text$$
     #:mixins (signaler$$)
@@ -890,7 +900,7 @@
       (send dc set-pen old-pen)
       (send dc set-brush old-brush)))
 
-  (define-editor radio$ (list-block$$ widget$)
+  (define-editor radio$ vertical/horizontal-block$
     (super-new))
 
   (define-editor-mixin pickable$$

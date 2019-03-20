@@ -119,17 +119,18 @@
           (serialize editor #:deserialize-relative-directory rel-to)))))
 
 (define-syntax-parser define-init
-  [(_ id:id default #f)
+  [(_ name:id default #f)
    (syntax/loc this-syntax
-       (define id default))]
-  [(_ id:id default #t)
+     (define name default))]
+  [(_ name:id default #t)
    (syntax/loc this-syntax
-     (define-init id default (λ (x) x)))]
-  [( id:id default init-proc)
+     (define-init name default (λ (x) x)))]
+  [(_ name:id default init-proc)
    (quasisyntax/loc this-syntax
      (begin
-       (init [(ist id) default])
-       #`(syntax/loc this-syntax (define id (init-proc ist)))))])
+       (init [(ist name) default])
+       #,(syntax/loc this-syntax
+           (define name (init-proc ist)))))])
 
 
 (define-syntax-parser define-getter
@@ -358,7 +359,9 @@
                           #`(when (hash-has-key? table '#,key)
                               (define des-proc #,d?)
                               (define maybe-other-val (hash-ref table '#,key))
-                              (define other-val (if des-proc (des-proc maybe-other-val) maybe-other-val))
+                              (define other-val (if des-proc
+                                                    (des-proc maybe-other-val)
+                                                    maybe-other-val))
                               (let ([p* #,p?])
                                 (case p*
                                   [(#t) (set! #,i other-val)]
@@ -414,7 +417,8 @@
   (syntax-parse stx
     [(_ name:id
         (~or (~optional (~seq #:interfaces (interfaces ...)) #:defaults ([(interfaces 1) '()]))
-             (~optional (~seq #:mixins (mixins ...)) #:defaults ([(mixins 1) '()])))
+             (~optional (~seq #:mixins (mixins ...)) #:defaults ([(mixins 1) '()]))
+             (~optional (~seq #:super $) #:defaults ([$ #'super])))
         ...
         body ...)
      #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
