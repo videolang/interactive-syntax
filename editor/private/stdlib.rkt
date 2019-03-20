@@ -479,6 +479,7 @@
       #:getter #t
       #:setter #t)
     (define-state editor-list '()
+      #:getter #t
       #:persistence (get-persistence))
     (define-state focus #f)
     (super-new)
@@ -900,8 +901,44 @@
       (send dc set-pen old-pen)
       (send dc set-brush old-brush)))
 
+  ;; Will be lifted into racket/list
+  (begin-for-editor
+    (define (remove-index ls index)
+      (unless (list? ls)
+        (raise-argument-error 'remove-index "list?" 0 ls index))
+      (unless (exact-nonnegative-integer? index)
+        (raise-argument-error 'remove-index "exact-nonnegative-integer?" 1 ls index))
+      (let loop ([count 0]
+                 [lst ls])
+        (cond [(null? lst) '()]
+              [(= count index)
+               (loop (add1 count)
+                     (cdr lst))]
+              [else
+               (cons (car lst)
+                     (loop (add1 count)
+                           (cdr lst)))]))))
+
   (define-editor radio$ vertical/horizontal-block$
-    (super-new))
+    (inherit get-persistence
+             get-editor-list)
+    (define selected #f)
+    (define-state children '()
+      #:persistence (get-persistence))
+    (super-new)
+    (define/override (add-child child)
+      (define option (new horizontal-block$))
+      (define toggle (new toggle$ [parent option]))
+      (set! children (append (cons children toggle) child))
+      (send toggle add-child child)
+      (super add-child toggle))
+    (define/override (remove-child child)
+      (define index (index-where children
+                                 (λ (c) (eq? child (car c)))))
+      (when index
+        (define option (list-ref (get-editor-list) index))
+        (set! children (remove-index children index))
+        (super remove-child option))))
 
   (define-editor-mixin pickable$$
     (super-new)
