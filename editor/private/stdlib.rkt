@@ -864,10 +864,6 @@
         [(is-a? event mouse-event%)
          (define in-button?
            (send this in-bounds? event))
-         (writeln (send event get-event-type))
-         (writeln in-button?)
-         (writeln mouse-state)
-         (newline)
          (match (send event get-event-type)
            ['left-down
             (when in-button?

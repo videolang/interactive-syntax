@@ -70,6 +70,10 @@
                          filename)]
                   [_ (resolve-module-path _)])
              _)))
+    (define/private (maybe-path-only path)
+      (if (path-string? path)
+          (path-only path)
+          path))
     (define/public (reset-editor-namespace)
       (define maybe-filename (maybe-get-filename))
       (parameterize ([editor-read-as-snip? #t])
@@ -88,8 +92,12 @@
                                 (syntax-parse stx
                                   [(mod name lang body ...)
                                    (syntax->datum #'name)]))))))
-            (parameterize ([current-module-declare-name
-                            (and maybe-filename (make-resolved-module-path maybe-filename))])
+            (parameterize ([current-directory
+                            (or (maybe-path-only maybe-filename) (current-directory))]
+                           [current-module-declare-name
+                            (and maybe-filename (make-resolved-module-path maybe-filename))]
+                           [current-load-relative-directory
+                            (or (maybe-path-only maybe-filename) (current-load-relative-directory))])
               (eval mod-stx))
             (namespace-require/expansion-time mod-name)
             (namespace-require (from-editor mod-name))
