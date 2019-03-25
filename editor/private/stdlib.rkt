@@ -205,6 +205,14 @@
     (define-state y 0
       #:getter #t
       #:persistence (get-persistence))
+    (define-state min-width 0
+      #:init #t
+      #:getter #t
+      #:persistence (get-persistence))
+    (define-state min-height 0
+      #:init #t
+      #:getter #t
+      #:persistence (get-persistence))
     (define/private (set-pos! x* y*)
       (set! x x*)
       (set! y y*))
@@ -285,11 +293,11 @@
     (define/public (resize-content w h)
       (local-resize-content w h))
     (define (local-resize-content w h)
-      (set! content-width w)
-      (set! content-height h)
+      (set! content-width (max min-width w))
+      (set! content-height (max min-height h))
       (define c (send this get-context))
       (when c
-        (send c resize w h))
+        (send c resize content-width content-height))
       (when parent
         (send parent resized-child this)))
     (define/override (get-extent x y)
@@ -300,6 +308,8 @@
     (define/override (resize w h)
       (define c-w (- w left-margin right-margin))
       (define c-h (- h top-margin bottom-margin))
+      (set! min-width c-w)
+      (set! min-height c-h)
       (local-resize-content c-w c-h))
     (define/public (get-parent)
       parent)
@@ -381,7 +391,7 @@
 
   (define-editor pasteboard$ widget$
     #:interfaces (parent<$>)
-    (inherit in-bounds?)
+    (inherit in-bounds? get-persistence)
     (define-state min-height 0
       #:persistence #f
       #:init #t)
@@ -389,6 +399,7 @@
       #:persistence #f
       #:init #t)
     (define-state children (hash)
+      #:persistence (get-persistence)
       #:getter #t)
     (define-state focus #f
       #:persistence #f
@@ -457,7 +468,7 @@
     (define/override (draw dc x y)
       (super draw dc x y)
       (for ([(child pos) (in-dict children)])
-        (send child draw dc (car pos) (cdr pos)))))
+        (send child draw dc (+ x (car pos)) (+ y (cdr pos))))))
   
   ;; Generic list collection, used by other editors such as vertical-block$
   ;; and horizontal-block$.
@@ -1026,10 +1037,10 @@
   (define-editor window$ vertical-block$
     (inherit get-context)
     (super-new)
-    (init [(if frame)])
-    (define frame if)
-    (define/public (get-frame)
-      frame)
+    (define-state frame #f
+      #:init #t
+      #:setter #t
+      #:getter #t)
     (define/public (show [show? #t])
       (when (get-context)
         (send (get-context) show show?))
@@ -1043,9 +1054,59 @@
            (send frame show #f)]))))
 
   (define-editor dialog$ window$
+    (inherit set-frame! get-frame)
+    (init [title "Dialog"])
     (super-new)
+    (unless (get-frame)
+      (set-frame! (new dialog%
+                       [label title])))
     (define result #f)
     (define/public (get-result)
       result)
     (define/public (set-result! new)
-      (set! result new))))
+      (set! result new)))
+
+  (begin-for-editor
+    (define option-bundle$
+      (class object%
+        (super-new)
+        (define finalized? #f)
+        (define options (hash))
+        (define/public (add-option label setter)
+          (when finalized?
+            (error 'option-bundle$ "Options already finalized"))
+          (set! options (dict-set options label setter)))
+        (define/public (finalize-options)
+          (when finalized?
+            (error 'option-bundle$ "Options already finalized"))
+          (set! finalized? #t)
+          (set! options
+                (for/hash ([(option setter) (in-dict options)])
+                  (values option (setter)))))
+        (define/public (get-options)
+          (unless finalized?
+            (log-editor-warning 'option-bundle "Finalizing Options")
+            (finalize-options))
+          options))))
+
+  (define-editor labeled-option$ horizontal-block$
+    (super-new)
+    (define-state option values
+      #:init #t
+      #:getter #t)
+    (define-state label #f
+      #:init #t)
+    (define-state bundle #f
+      #:init #t)
+    (define-state bundle-finalizer #f
+      #:init #t)
+    (define-state bundle-label label
+      #:init #t)
+    (new label$ [parent this]
+         [text label])
+    (define opt (option this))
+    (when bundle
+      (send bundle add-option
+            bundle-label
+            (λ ()
+              ((or bundle-finalizer values) opt))))))
