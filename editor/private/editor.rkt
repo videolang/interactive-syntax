@@ -154,7 +154,8 @@
 (begin-for-syntax
   (define-syntax-class defelaborate
     #:literals (define-elaborate)
-    (pattern (define-elaborate data body ...+)))
+    (pattern (define-elaborate data
+               body ...+)))
   (define-splicing-syntax-class defstate-options
     (pattern (~seq
               (~alt (~optional (~seq #:persistence persistence) #:defaults ([persistence #'#t]))
@@ -202,11 +203,11 @@
 (define-syntax (~define-editor stx)
   (syntax-parse stx
     [(_ orig-stx name:id supclass (interfaces ...)
-        (~or (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
-             (~optional (~seq #:direct-deserialize? dd?) #:defaults ([dd? #'#t])))
+        (~alt (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
+              (~optional (~seq #:direct-deserialize? dd?) #:defaults ([dd? #'#t])))
         ...
         (~and
-         (~seq (~or plain-state:defstate
+         (~seq (~alt plain-state:defstate
                     (~optional elaborator:defelaborate
                                #:defaults ([elaborator.data #'this]
                                            [(elaborator.body 1) (list #'#'this)]))
@@ -216,6 +217,7 @@
      #:with name-deserialize (format-id #'orig-stx "~a:deserialize" #'name)
      #:with (marked-interfaces ...) (editor/user-syntax-introduce #'(interfaces ...))
      #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
+     #:with marked-name (editor/user-syntax-introduce #'name)
      #:with marked-supclass (editor/user-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor/user-syntax-introduce #'(plain-state ...))
      #:with serialize-method (gensym 'serialize)
@@ -293,6 +295,7 @@
             (define deserialize-binding
               (make-parameter (cons 'name-deserialize
                                     (module-path-index-join '(submod "." deserialize) this-modpath))))
+            (define-syntax marked-name (make-rename-transformer #'name))
             (define name
               (let ()
                 (define-local-member-name state-methods) ...
@@ -383,9 +386,11 @@
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
          (define-syntax-parser elaborator-inside
-           [(_ data-id)
-            #:with elaborator.data #'data-id
-            elaborator.body ...])
+           [(_ data-id:id data)
+            (syntax-parse #'orig-stx
+              [_
+               #:with elaborator.data #'data-id
+               elaborator.body ...])])
          (define-syntax elaborator-name
            (elaborator-transformer #'elaborator-inside)))]))
 
@@ -396,7 +401,7 @@
      #'(splicing-let ([data-id
                        (parameterize ([current-load-relative-directory (this-mod-dir)])
                          (deserialize 'data))])
-         (elaborator-inside data-id))]))
+         (elaborator-inside data-id data))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
