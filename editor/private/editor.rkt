@@ -68,7 +68,7 @@
 ;;  the editor.
 (define-syntax-parser #%editor
   [(_ binding-information body)
-   #'(splicing-let-syntax
+   #`(splicing-let-syntax
          ([this (λ (stx)
                   (parameterize ([current-load-relative-directory (this-mod-dir)])
                     (match-define `((,editor-binding ,editor-name)
@@ -80,7 +80,7 @@
                        ;syntax-local-lift-require
                        elaborator-binding
                        elaborator-name))
-                    #'(elaborator body)))])
+                    #'(elaborator body #,this-syntax)))])
        (this))])
 
 ;; Returns an identifier that contains
@@ -386,8 +386,8 @@
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
          (define-syntax-parser elaborator-inside
-           [(_ data-id:id data)
-            (syntax-parse #'orig-stx
+           [(_ data-id:id orig)
+            (syntax-parse #'orig
               [_
                #:with elaborator.data #'data-id
                elaborator.body ...])])
@@ -396,12 +396,12 @@
 
 (define-for-syntax (elaborator-transformer inside)
   (syntax-parser
-    [(_ data)
+    [(_ data orig)
      #:with elaborator-inside inside
-     #'(splicing-let ([data-id
+     #`(splicing-let ([data-id
                        (parameterize ([current-load-relative-directory (this-mod-dir)])
                          (deserialize 'data))])
-         (elaborator-inside data-id data))]))
+         (elaborator-inside data-id orig))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx

@@ -38,7 +38,7 @@
 
 (define (make-editor-readtable #:readtable [base-readtable (current-readtable)]
                                #:outer-scope [user-outer-scope #f])
-  (define outer-scope (or user-outer-scope (make-syntax-introducer #t)))
+  (define outer-scope values);(or user-outer-scope (make-syntax-introducer #t)))
   (define (read-editor ch port src line col pos)
     (define next (peek-string (string-length editor-finish) 0 port))
     (cond [(equal? next "ditor")
@@ -52,7 +52,7 @@
              (raise-read-error "bad syntax" src line col pos span))
            (define the-editor (read-syntax/recursive src port #f #f))
            (define stx (build-source-location-syntax (make-srcloc src line col pos span)))
-           (define inner-scope (make-syntax-introducer))
+           (define inner-scope values #;(make-syntax-introducer))
            (define-values (new-line new-col new-pos)
              (port-next-location port))
            (log-message (current-logger)
