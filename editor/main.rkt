@@ -10,6 +10,7 @@
   (require syntax/module-reader
            syntax/parse
            racket/match
+           racket/pretty
            "private/read-editor.rkt")
 
   (define ((wrap-reader t) . args)
@@ -25,6 +26,7 @@
               #`(module name lang
                   (mod-beg
                    headers ...
+                   #,(datum->syntax #f '(#%require (only editor/private/editor #%editor)))
                    ;#,(outer-scope #'(#%require (only editor/base)))
                    body ...)))])
           (match stx

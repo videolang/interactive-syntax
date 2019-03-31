@@ -65,8 +65,10 @@
                                 new-line new-col new-pos))
            (outer-scope
             (inner-scope
-             (quasisyntax/loc stx
-               (#%editor #,the-elaborator #,the-editor))))]
+             (datum->syntax
+              the-elaborator
+              `(#%editor ,the-elaborator ,the-editor)
+              stx)))]
           [else
            (define-values (in out) (make-pipe))
            (write-string "#e" out)

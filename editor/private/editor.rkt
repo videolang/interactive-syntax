@@ -19,6 +19,7 @@
                      syntax/location
                      racket/syntax
                      racket/path
+                     racket/pretty
                      syntax/parse))
 (provide (all-defined-out)
          (all-from-out "lang.rkt")
@@ -80,7 +81,8 @@
                        ;syntax-local-lift-require
                        elaborator-binding
                        elaborator-name))
-                    #'(elaborator body #,this-syntax)))])
+                    (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
+                    #'(elaborator body that-syntax)))])
        (this))])
 
 ;; Returns an identifier that contains

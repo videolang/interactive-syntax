@@ -504,10 +504,12 @@
       (define index (if editor
                         (index-of editor-list editor)
                         (sub1 (length editor-list))))
+      (remove-child/index index))
+    (define/public (remove-child/index index)
       (define removed-editor (list-ref editor-list index))
       (send removed-editor register-parent #f)
       (set! editor-list (remq removed-editor editor-list))
-      (resized-child editor))
+      (resized-child removed-editor))
     (define/public (count)
       (length editor-list))
     (define/public (in-children)
@@ -1091,9 +1093,9 @@
 
   (define-editor labeled-option$ horizontal-block$
     (super-new)
-    (define-state option values
-      #:init #t
-      #:getter #t)
+    (init [option values])
+    (define/public (get-option)
+      opt)
     (define-state label #f
       #:init #t)
     (define-state bundle #f
