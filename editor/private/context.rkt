@@ -203,7 +203,7 @@
             [else
              (define-values (binding serial) (serialize-editor))
              (define editor-datum `(#%editor ,binding ,serial))
-             (datum->syntax #'#f
+             (datum->syntax #f ;#'#f
                             editor-datum
                             (vector src line col pos (string-length (format "~s" editor-datum))))]))
     (define/override (write f)

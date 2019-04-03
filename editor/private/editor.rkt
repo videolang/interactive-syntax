@@ -11,6 +11,7 @@
          syntax/parse/define
          racket/runtime-path
          racket/match
+         racket/stxparam
          (for-syntax racket/base
                      (submod "lang.rkt" key-submod)
                      racket/match
@@ -36,12 +37,16 @@
 (define elaborator-key (member-name-key elaborate))
 (define modpath-key (member-name-key get-modpath))
 
+(define editor-deserialize-for-elaborator
+  (make-parameter #f))
+
 (module m->r racket/base
   (provide (all-defined-out))
   (require racket/path
            racket/match
            syntax/parse/define
            syntax/modresolve
+           syntax/location
            (for-syntax racket/base))
   (define (modpath->relpath modpath)
     (if (path-string? modpath)
@@ -52,6 +57,13 @@
       (modpath->relpath (resolve-module-path-index
                          (module-path-index-join "here.rkt" #f))))))
 (require 'm->r (for-syntax 'm->r))
+
+(define-syntax-parameter current-editor-modpath-mode 'user)
+(begin-for-syntax
+  (define (package/quote-module-path)
+    (case (syntax-parameter-value #'current-editor-modpath-mode)
+      [(user) 'editor/private/editor]
+      [(package) (quote-module-path)])))
 
 ;; Because deserialized editors use a pseudo-identifier
 ;;   to resolve to an elaborator, we need to reconstruct a
@@ -157,6 +169,7 @@
   (define-syntax-class defelaborate
     #:literals (define-elaborate)
     (pattern (define-elaborate data
+               (~optional (~seq #:this-editor this-editor))
                body ...+)))
   (define-splicing-syntax-class defstate-options
     (pattern (~seq
@@ -211,8 +224,9 @@
         (~and
          (~seq (~alt plain-state:defstate
                     (~optional elaborator:defelaborate
-                               #:defaults ([elaborator.data #'this]
-                                           [(elaborator.body 1) (list #'#'this)]))
+                               #:defaults ([elaborator.data #'this-data]
+                                           [elaborator.this-editor #'this-editor]
+                                           [(elaborator.body 1) (list #'#'this-editor)]))
                     internal-body) ...)
          (~seq body ...)))
      #:with elaborator-name (format-id #'orig-stx "~a:elaborate" #'name)
@@ -244,11 +258,42 @@
                           (let ()
                             (define b (continuation-mark-set-first #f editor-list-key))
                             (when (and b (box? b))
-                              (set-box! b (cons #'name (unbox b)))))))
+                              (set-box! b (cons #'name (unbox b))))))
+                      #`(deserializer-submod
+                         (provide name-deserialize)
+                         (#%require #,(package/quote-module-path))
+                         (define-member-name serialize-method serial-key)
+                         (define-member-name deserialize-method deserial-key)
+                         (define-member-name deserialize-binding-method deserial-binding-key)
+                         (define-member-name copy-method copy-key)
+                         (define-member-name elaborator-method elaborator-key)
+                         (define-member-name modpath-method modpath-key)
+                         (define (get-name)
+                           (dynamic-require (quote-module-path ".." editor) 'name))
+                         (define name-deserialize
+                           (make-deserialize-info
+                            (λ (version args)
+                              (cond [(editor-deserialize-for-elaborator)
+                                     args]
+                                    [else
+                                     (define this (new (get-name)))
+                                     (send this deserialize-method args)
+                                     (send this on-state-changed)
+                                     this]))
+                            (λ ()
+                              (cond [(editor-deserialize-for-elaborator)
+                                     (values 48
+                                             (λ _ 56))]
+                                    [else
+                                     (define pattern (new (get-name)))
+                                     (values pattern
+                                             (λ (other)
+                                               (send pattern copy-method other)
+                                               (send pattern on-state-changed)))]))))))
                 '())
          (#,@(if dd?*
                  #`(editor-submod
-                    (#%require #,(quote-module-path))
+                    (#%require #,(package/quote-module-path))
                     (define this-modpath
                       (variable-reference->module-path-index (#%variable-reference)))
                     (define-runtime-module-path-index this-filepath "."))
@@ -261,24 +306,8 @@
           (define-member-name elaborator-method elaborator-key)
           (define-member-name modpath-method modpath-key)
           #,@(if dd?*
-                 (list
-                  #'(provide name)
-                  #`(module+ deserialize
-                     (provide name-deserialize)
-                     (define name-deserialize
-                       (make-deserialize-info
-                        (λ (version args)
-                          (define this (new name))
-                          (send this deserialize-method args)
-                          (send this on-state-changed)
-                          this)
-                        (λ ()
-                          (define pattern (new name))
-                          (values pattern
-                                  (λ (other)
-                                    (send pattern copy-method other)
-                                    (send pattern on-state-changed))))))))
-                  '())
+                 (list #'(provide name))
+                 '())
           (splicing-syntax-parameterize
               ([define-state
                  (syntax-parser
@@ -296,7 +325,7 @@
                     #'(begin)])])
             (define deserialize-binding
               (make-parameter (cons 'name-deserialize
-                                    (module-path-index-join '(submod "." deserialize) this-modpath))))
+                                    (module-path-index-join '(submod ".." deserializer) this-modpath))))
             (define-syntax marked-name (make-rename-transformer #'name))
             (define name
               (let ()
@@ -388,10 +417,15 @@
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
          (define-syntax-parser elaborator-inside
-           [(_ data-id:id orig)
+           [(_ data-id:id data orig)
             (syntax-parse #'orig
               [_
-               #:with elaborator.data #'data-id
+               #:do [(define elaborator.data
+                       (parameterize ([(dynamic-require
+                                        '#,(package/quote-module-path)
+                                        'editor-deserialize-for-elaborator) #t])
+                         (deserialize (syntax->datum #'data))))]
+               #:with elaborator.this-editor #'data-id
                elaborator.body ...])])
          (define-syntax elaborator-name
            (elaborator-transformer #'elaborator-inside)))]))
@@ -403,7 +437,7 @@
      #`(splicing-let ([data-id
                        (parameterize ([current-load-relative-directory (this-mod-dir)])
                          (deserialize 'data))])
-         (elaborator-inside data-id orig))]))
+         (elaborator-inside data-id data orig))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
@@ -439,7 +473,7 @@
                (set-box! b (cons #'name (unbox b))))))
          (editor-submod
           (provide name)
-          (#%require #,(quote-module-path))
+          (#%require #,(package/quote-module-path))
           (define (name $)
             (~define-editor #,stx
                             name

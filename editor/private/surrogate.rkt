@@ -101,7 +101,7 @@
               (eval mod-stx))
             (namespace-require/expansion-time mod-name)
             (namespace-require (from-editor mod-name))
-            (namespace-require `(submod ,mod-name editor deserialize))
+            (namespace-require `(submod ,mod-name deserializer))
             (set! stored-mod-name mod-name)
             (set! stored-mod-stx mod-stx)
             (set! editor-namespace new-ns)))))

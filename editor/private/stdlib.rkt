@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require "lang.rkt"
+         "editor.rkt"
          racket/splicing
          (for-syntax racket/base
                      racket/syntax
@@ -10,10 +11,10 @@
 ;;  its base lang needs to be something more like racket/base
 ;;  rather than editor
 (splicing-syntax-parameterize ([current-editor-lang 'racket/base]
-                               [current-editor-base "editor.rkt"])
+                               [current-editor-base "editor.rkt"]
+                               [current-editor-modpath-mode 'package])
 
-  (require "editor.rkt"
-           (for-editor "context.rkt"
+  (require (for-editor "context.rkt"
                        "event.rkt"
                        racket/match
                        racket/set

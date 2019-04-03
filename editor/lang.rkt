@@ -1,12 +1,14 @@
 #lang racket/base
 
 (require "private/lang.rkt"
+         "private/editor.rkt"
          "base.rkt"
          racket/splicing
          (for-syntax racket/base))
 
 (splicing-syntax-parameterize ([current-editor-lang "private/editor.rkt"]
-                               [current-editor-base "base.rkt"])
+                               [current-editor-base "base.rkt"]
+                               [current-editor-modpath-mode 'package])
   (begin-for-editor) ; <- because require happens too late...
   (require "base.rkt"
            racket/class

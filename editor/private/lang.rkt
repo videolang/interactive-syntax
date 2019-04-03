@@ -54,17 +54,37 @@
     #:transparent
     #:mutable)
   (define the-submod-data (submod-data '() #f))
+  (define deserializer-submod-data (submod-data '() #f))
+  (define (add-syntax-to-submod! stx submod submod-name
+                                 #:lang-submod [lang-submod #f]
+                                 #:base-submod [base-submod #f]
+                                 #:scopes [scp #f]
+                                 #:required? [req? #t])
+    (define existing (submod-data-forms submod))
+    (when (and (not (submod-data-lifted submod)) req?)
+      (syntax-local-lift-module-end-declaration
+       #`(#,submod-name
+          #,@(if base-submod (list base-submod) '())
+          #,@(if lang-submod (list lang-submod) '())))
+      (set-submod-data-lifted! submod #t))
+    (set-submod-data-forms! submod (append (reverse (syntax->list stx)) existing)))
   (define (add-syntax-to-editor! stx
                                  #:scopes [scp #f]
                                  #:required? [req? #t])
-    (define existing (submod-data-forms the-submod-data))
-    (when (and (not (submod-data-lifted the-submod-data)) req?)
-      (syntax-local-lift-module-end-declaration
-       #`(define-editor-submodule
-           #,(syntax-parameter-value #'current-editor-base)
-           #,(syntax-parameter-value #'current-editor-lang)))
-      (set-submod-data-lifted! the-submod-data #t))
-    (set-submod-data-forms! the-submod-data (append (reverse (syntax->list stx)) existing))))
+    (add-syntax-to-submod! stx the-submod-data
+                           #'define-editor-submodule
+                           #:base-submod (syntax-parameter-value #'current-editor-base)
+                           #:lang-submod (syntax-parameter-value #'current-editor-lang)
+                           #:scopes scp
+                           #:required? req?))
+  (define (add-syntax-to-deserializer! stx
+                                       #:scopes [scp #f]
+                                       #:required? [req? #t])
+    (add-syntax-to-submod! stx deserializer-submod-data
+                           #'define-deserializer-submodule
+                           #:base-submod 'racket/base
+                           #:scopes scp
+                           #:required? req?)))
 
 (define-syntax (editor-submod stx)
   (syntax-parse stx
@@ -79,20 +99,40 @@
         #'(begin)]
        [else #`(begin #,stx)])]))
 
+(define-syntax (deserializer-submod stx)
+  (syntax-parse stx
+    [(_ body ...)
+     (case (syntax-local-context)
+       [(module)
+        (add-syntax-to-deserializer! (syntax-local-introduce #'(body ...))
+                                     #:scopes (let ([_ (attribute body)])
+                                                (if (pair? _) (car _) #f)))
+        #'(begin)]
+       [else #'(begin #,stx)])]))
+
 (define-for-syntax (wrap-scope scopes stx)
   (datum->syntax scopes (syntax-e stx)))
 
-(define-syntax (define-editor-submodule stx)
-  (syntax-parse stx
-    [(_ base lang)
-     (define base-scope
-       (editor-syntax-introduce (syntax-local-introduce (datum->syntax #f #f))))
-     #`(module* editor racket/base
-         (require #,(wrap-scope base-scope #'base)
-                  #,(wrap-scope base-scope #'lang)
-                  racket/serialize
-                  racket/class)
-         #,@(map syntax-local-introduce (reverse (submod-data-forms the-submod-data))))]))
+(define-syntax-parser define-editor-submodule
+  [(_ base lang)
+   (define base-scope
+     (editor-syntax-introduce (syntax-local-introduce (datum->syntax #f #f))))
+   #`(module* editor racket/base
+       (require #,(wrap-scope base-scope #'base)
+                #,(wrap-scope base-scope #'lang)
+                racket/serialize
+                racket/class)
+       #,@(map syntax-local-introduce (reverse (submod-data-forms the-submod-data))))])
+
+(define-syntax-parser define-deserializer-submodule
+  [(_ base)
+   (define base-scope
+     (editor-syntax-introduce (syntax-local-introduce (datum->syntax #f #f))))
+   #`(module* deserializer racket/base
+       (require #,(wrap-scope base-scope #'base)
+                racket/serialize
+                racket/class)
+       #,@(map syntax-local-introduce (reverse (submod-data-forms deserializer-submod-data))))])
 
 ;; ===================================================================================================
 

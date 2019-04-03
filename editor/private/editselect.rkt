@@ -6,7 +6,8 @@
          (for-syntax racket/base))
 
 (splicing-syntax-parameterize ([current-editor-lang "../lang.rkt"]
-                               [current-editor-base '(submod "../base.rkt" editor)])
+                               [current-editor-base '(submod "../base.rkt" editor)]
+                               [current-editor-modpath-mode 'package])
   (begin-for-editor) ; <--- TODO...WHY!!!
   (require syntax/location
            "context.rkt"
