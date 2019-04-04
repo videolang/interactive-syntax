@@ -20,6 +20,7 @@
            images/icons/control
            (prefix-in gui: racket/gui/base)
            syntax/modread
+           "stdlib.rkt"
            (for-editor "context.rkt"
                        racket/class
                        (prefix-in gui: racket/gui/base)

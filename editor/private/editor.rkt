@@ -13,6 +13,7 @@
          racket/match
          racket/stxparam
          (for-syntax racket/base
+                     racket/class
                      (submod "lang.rkt" key-submod)
                      racket/match
                      racket/serialize
@@ -179,6 +180,7 @@
                     (~optional (~seq #:serialize serialize) #:defaults ([serialize #'#f]))
                     (~optional (~seq #:deserialize deserialize) #:defaults ([deserialize #'#f]))
                     (~optional (~seq #:init init) #:defaults ([init #'#f]))
+                    (~optional (~seq #:elaborator elaborator) #:defaults ([elaborator #'#f]))
                     (~once default))
               ...)))
   (define-syntax-class defstate
@@ -194,7 +196,8 @@
              #:attr getter #'options.getter
              #:attr setter #'options.setter
              #:attr serialize #'options.serialize
-             #:attr deserialize #'options.deserialize)))
+             #:attr deserialize #'options.deserialize
+             #:attr elaborator #'options.elaborator)))
 
 (define-syntax-parameter define-elaborate
   (syntax-parser
@@ -219,22 +222,22 @@
   (syntax-parse stx
     [(_ orig-stx name:id supclass (interfaces ...)
         (~alt (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
-              (~optional (~seq #:direct-deserialize? dd?) #:defaults ([dd? #'#t])))
+              (~optional (~seq #:mixin mixin)))
         ...
         (~and
          (~seq (~alt plain-state:defstate
-                    (~optional elaborator:defelaborate
-                               #:defaults ([elaborator.data #'this-data]
-                                           [elaborator.this-editor #'this-editor]
-                                           [(elaborator.body 1) (list #'#'this-editor)]))
-                    internal-body) ...)
+                     (~optional elaborator:defelaborate
+                                #:defaults ([elaborator.data #'this-data]
+                                            [elaborator.this-editor #'this-editor]
+                                            [(elaborator.body 1) (list #'#'this-editor)]))
+                     internal-body) ...)
          (~seq body ...)))
+     #:with marked-name (editor/user-syntax-introduce #'name)
+     #:with marked-supclass (editor/user-syntax-introduce #'supclass)
      #:with elaborator-name (format-id #'orig-stx "~a:elaborate" #'name)
      #:with name-deserialize (format-id #'orig-stx "~a:deserialize" #'name)
      #:with (marked-interfaces ...) (editor/user-syntax-introduce #'(interfaces ...))
      #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
-     #:with marked-name (editor/user-syntax-introduce #'name)
-     #:with marked-supclass (editor/user-syntax-introduce #'supclass)
      #:with (state:defstate ...) (editor/user-syntax-introduce #'(plain-state ...))
      #:with serialize-method (gensym 'serialize)
      #:with deserialize-method (gensym 'deserialize)
@@ -244,70 +247,65 @@
      #:with modpath-method (gensym 'get-modpath)
      #:with (state-methods ...) (for/list ([i (in-list (attribute state.getter-name))])
                                   (gensym (syntax->datum i)))
-     (define dd?* (syntax-e #'dd?))
-     (unless (or (not dd?*)
-                 (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
+     (unless (or (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
        (raise-syntax-error #f "Must be defined at the module level" #'orig-stx))
+     (define m? (and (attribute mixin) #t))
      (define base? (syntax-e (attribute b?)))
      (define/syntax-parse public/override
        (if base? #'public #'override))
      #`(begin
-         #,@(if dd?*
+         #,@(if m?
+                (list)
                 (list #'(provide elaborator-name)
                       #'(begin-for-syntax
                           (let ()
                             (define b (continuation-mark-set-first #f editor-list-key))
                             (when (and b (box? b))
-                              (set-box! b (cons #'name (unbox b))))))
-                      #`(deserializer-submod
-                         (provide name-deserialize)
-                         (#%require #,(package/quote-module-path))
-                         (define-member-name serialize-method serial-key)
-                         (define-member-name deserialize-method deserial-key)
-                         (define-member-name deserialize-binding-method deserial-binding-key)
-                         (define-member-name copy-method copy-key)
-                         (define-member-name elaborator-method elaborator-key)
-                         (define-member-name modpath-method modpath-key)
-                         (define (get-name)
-                           (dynamic-require (quote-module-path ".." editor) 'name))
-                         (define name-deserialize
-                           (make-deserialize-info
-                            (λ (version args)
-                              (cond [(editor-deserialize-for-elaborator)
-                                     args]
-                                    [else
-                                     (define this (new (get-name)))
-                                     (send this deserialize-method args)
-                                     (send this on-state-changed)
-                                     this]))
-                            (λ ()
-                              (cond [(editor-deserialize-for-elaborator)
-                                     (values 48
-                                             (λ _ 56))]
-                                    [else
-                                     (define pattern (new (get-name)))
-                                     (values pattern
-                                             (λ (other)
-                                               (send pattern copy-method other)
-                                               (send pattern on-state-changed)))]))))))
-                '())
-         (#,@(if dd?*
-                 #`(editor-submod
-                    (#%require #,(package/quote-module-path))
-                    (define this-modpath
-                      (variable-reference->module-path-index (#%variable-reference)))
-                    (define-runtime-module-path-index this-filepath "."))
-                 #'(begin
-                     (define this-modpath #f)))
+                              (set-box! b (cons #'name (unbox b))))))))
+         (deserializer-submod
+          (provide name-deserialize)
+          (#%require racket/class
+                     #,(package/quote-module-path))
           (define-member-name serialize-method serial-key)
           (define-member-name deserialize-method deserial-key)
           (define-member-name deserialize-binding-method deserial-binding-key)
           (define-member-name copy-method copy-key)
           (define-member-name elaborator-method elaborator-key)
           (define-member-name modpath-method modpath-key)
-          #,@(if dd?*
-                 (list #'(provide name))
-                 '())
+          (define (get-name)
+            (dynamic-require (quote-module-path ".." editor) 'name))
+          (define name-deserialize
+            (make-deserialize-info
+             (λ (version args)
+               (cond [(editor-deserialize-for-elaborator)
+                      args]
+                     [else
+                      (define this (new (get-name)))
+                      (send this deserialize-method args)
+                      (send this on-state-changed)
+                      this]))
+             (λ ()
+               (cond [(editor-deserialize-for-elaborator)
+                      (values 48
+                              (λ _ 56))]
+                     [else
+                      (define pattern (new (get-name)))
+                      (values pattern
+                              (λ (other)
+                                (send pattern copy-method other)
+                                (send pattern on-state-changed)))])))))
+         (editor-submod
+          (provide name)
+          (#%require #,(package/quote-module-path))
+          (define this-modpath
+            (variable-reference->module-path-index (#%variable-reference)))
+          (define-runtime-module-path-index this-filepath ".")
+          (define-member-name serialize-method serial-key)
+          (define-member-name deserialize-method deserial-key)
+          (define-member-name deserialize-binding-method deserial-binding-key)
+          (define-member-name copy-method copy-key)
+          (define-member-name elaborator-method elaborator-key)
+          (define-member-name modpath-method modpath-key)
           (splicing-syntax-parameterize
               ([define-state
                  (syntax-parser
@@ -327,13 +325,13 @@
               (make-parameter (cons 'name-deserialize
                                     (module-path-index-join '(submod ".." deserializer) this-modpath))))
             (define-syntax marked-name (make-rename-transformer #'name))
-            (define name
+            (define #,(if m? #'(name mixin) #'name)
               (let ()
                 (define-local-member-name state-methods) ...
                 (class/derived
                  orig-stx
                  (name
-                  marked-supclass
+                  #,(if m? #'(supclass mixin) #'marked-supclass)
                   ((interface* () ([prop:serializable
                                     (make-serialize-info
                                      (λ (this)
@@ -346,10 +344,10 @@
                    marked-interfaces ...)
                   #f)
                  (define (elaborator-method)
-                   #,(if dd?*
+                   #,(if m?
+                         #'(list this-modpath #f)
                          #'(list (module-path-index-join '(submod "..") this-modpath)
-                                 'elaborator-name)
-                         #'(list this-modpath #f)))
+                                 'elaborator-name)))
                  (public/override elaborator-method)
                  (define (serialize-method)
                    (vector #,(if base?
@@ -416,6 +414,13 @@
                  (public/override modpath-method)
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
+         (begin-for-syntax
+           (provide name)
+           (define #,(if m? #'(name $) #'name)
+             (class #,(cond [base? #'object%]
+                            [m? #'(supclass $)]
+                            [else #'marked-supclass])
+               (super-new))))
          (define-syntax-parser elaborator-inside
            [(_ data-id:id data orig)
             (syntax-parse #'orig
@@ -462,23 +467,16 @@
              (~optional (~seq #:super $) #:defaults ([$ #'super])))
         ...
         body ...)
-     #:with (marked-body ...) (editor/user-syntax-introduce #'(body ...) 'add)
-     #:with (marked-interfaces ...) (editor/user-syntax-introduce #'(interfaces ...))
-     #:with (marked-mixins ...) (editor/user-syntax-introduce #'(mixins ...))
+     #:with (marked-mixins ...) (editor/user-syntax-introduce #'(mixins ...) 'add)
      #`(begin
          (begin-for-syntax
            (let ()
              (define b (continuation-mark-set-first #f editor-mixin-list-key))
              (when (and b (box? b))
                (set-box! b (cons #'name (unbox b))))))
-         (editor-submod
-          (provide name)
-          (#%require #,(package/quote-module-path))
-          (define (name $)
-            (~define-editor #,stx
-                            name
-                            ((compose #,@(reverse (attribute marked-mixins))) $)
-                            (marked-interfaces ...)
-                            #:direct-deserialize? #f
-                            marked-body ...)
-            name)))]))
+         (~define-editor #,stx
+                         name
+                         (compose #,@(reverse (attribute marked-mixins)))
+                         (interfaces ...)
+                         #:mixin $
+                         body ...))]))
