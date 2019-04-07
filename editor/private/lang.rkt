@@ -1,6 +1,7 @@
 #lang racket/base
 
 (provide (all-defined-out)
+         (all-from-out "log.rkt")
          (for-syntax (all-defined-out)))
 
 (require racket/class
@@ -10,6 +11,7 @@
          racket/match
          syntax/location
          syntax/parse/define
+         "log.rkt"
          (for-syntax racket/base
                      racket/list
                      racket/match
@@ -311,4 +313,3 @@
        (begin-for-editor
          (define name body)))]))
 
-(define-logger editor)

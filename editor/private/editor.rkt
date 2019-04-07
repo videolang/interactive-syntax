@@ -15,6 +15,7 @@
          (for-syntax racket/base
                      racket/class
                      (submod "lang.rkt" key-submod)
+                     "log.rkt"
                      racket/match
                      racket/serialize
                      racket/function
@@ -147,38 +148,44 @@
         (parameterize ([(send editor deserial-binding) new-modpath])
           (serialize editor #:deserialize-relative-directory rel-to)))))
 
-(define-syntax-parser define-init
-  [(_ name:id default #f)
-   (syntax/loc this-syntax
-     (define name default))]
-  [(_ name:id default #t)
-   (syntax/loc this-syntax
-     (define-init name default (λ (x) x)))]
-  [(_ name:id default init-proc)
-   (quasisyntax/loc this-syntax
-     (begin
-       (init [(ist name) default])
-       #,(syntax/loc this-syntax
-           (define name (init-proc ist)))))])
+;; Macros used by state variables (getter, setter, init)
+(module state-macros racket/base
+  (provide (all-defined-out))
+  (require syntax/parse/define
+           racket/class
+           (for-syntax racket/base))
+  (define-syntax-parser define-init
+    [(_ name:id default #f)
+     (syntax/loc this-syntax
+       (define name default))]
+    [(_ name:id default #t)
+     (syntax/loc this-syntax
+       (define-init name default (λ (x) x)))]
+    [(_ name:id default init-proc)
+     (quasisyntax/loc this-syntax
+       (begin
+         (init [(ist name) default])
+         #,(syntax/loc this-syntax
+             (define name (init-proc ist)))))])
 
+  (define-syntax-parser define-getter
+    [(_ _:id _:id #f)
+     (syntax/loc this-syntax (void))]
+    [(_ state:id getter:id #t)
+     (quasisyntax/loc this-syntax
+       (define-getter state getter #,(syntax/loc this-syntax (λ () state))))]
+    [(_ _:id getter:id body)
+     (syntax/loc this-syntax (define/public getter body))])
 
-(define-syntax-parser define-getter
-  [(_ _:id _:id #f)
-   (syntax/loc this-syntax (void))]
-  [(_ state:id getter:id #t)
-   (quasisyntax/loc this-syntax
-     (define-getter state getter #,(syntax/loc this-syntax (λ () state))))]
-  [(_ _:id getter:id body)
-   (syntax/loc this-syntax (define/public getter body))])
-
-(define-syntax-parser define-setter
-  [(_ _:id _:id #f)
-   (syntax/loc this-syntax (void))]
-  [(_ state:id setter:id #t)
-   (quasisyntax/loc this-syntax
-     (define-setter state setter #,(syntax/loc this-syntax (λ (new-val) (set! state new-val)))))]
-  [(_ _:id setter:id body)
-   (syntax/loc this-syntax (define/public setter body))])
+  (define-syntax-parser define-setter
+    [(_ _:id _:id #f)
+     (syntax/loc this-syntax (void))]
+    [(_ state:id setter:id #t)
+     (quasisyntax/loc this-syntax
+       (define-setter state setter #,(syntax/loc this-syntax (λ (new-val) (set! state new-val)))))]
+    [(_ _:id setter:id body)
+     (syntax/loc this-syntax (define/public setter body))]))
+(require 'state-macros (for-syntax 'state-macros))
 
 (begin-for-syntax
   (define-syntax-class defelaborate
@@ -269,6 +276,46 @@
      (define base? (syntax-e (attribute b?)))
      (define/syntax-parse public/override
        (if base? #'public #'override))
+     (define (deserialize-proc rec for-editor?)
+       #`(λ (data)
+           (define sup (vector-ref data 0))
+           (define key (vector-ref data 1))
+           (define table (vector-ref data 2))
+           #,(if base?
+                 #`(void)
+                 #`(super #,rec (if (eq? 'name key)
+                                                 sup
+                                                 data)))
+           (unless (eq? key 'name)
+             (log-editor-warning "Missing data for key ~a, trying super"
+                                 'name))
+           (when (eq? key 'name)
+             (void)
+             #,@(for/list ([i (in-list (attribute state.marked-name))]
+                           [p? (in-list (attribute state.persistence))]
+                           [s? (in-list (attribute state.setter))]
+                           [d? (in-list (attribute state.deserialize))]
+                           [e? (in-list (attribute state.elaborator))])
+                  (define key (syntax->datum i))
+                  #`(when (hash-has-key? table '#,key)
+                      (define des-proc #,(if for-editor? d? #f))
+                      (define maybe-other-val (hash-ref table '#,key))
+                      (define other-val (if des-proc
+                                            (des-proc maybe-other-val)
+                                            maybe-other-val))
+                      #,(if for-editor?
+                            #`(let ([p* #,p?])
+                                (case p*
+                                  [(#t) (set! #,i other-val)]
+                                  [(#f) (void)]
+                                  [else (set! #,i (p* #,i other-val))]))
+                            #`(set! #,i other-val)))))))
+     (define (copy-proc rec)
+       #`(λ (other)
+           #,(if base?
+                 #`(void)
+                 #`(super #,rec other))
+           (set! state.marked-name (send other state-methods)) ...))
      #`(begin
          #,@(if m?
                 (list)
@@ -278,6 +325,8 @@
                             (define b (continuation-mark-set-first #f editor-list-key))
                             (when (and b (box? b))
                               (set-box! b (cons #'name (unbox b))))))))
+         ;; Submodule for deserialization, used by both editor submodule
+         ;;   and begin-for-syntax elaborator.
          (deserializer-submod
           (provide name-deserialize)
           (#%require racket/class
@@ -317,6 +366,7 @@
                                [else
                                 (send pattern copy-method other)
                                 (send pattern on-state-changed)])))))))
+         ;; Main editor class
          (editor-submod
           (provide name)
           (#%require #,(package/quote-module-path))
@@ -345,8 +395,9 @@
                    [de:defelaborate
                     #'(begin)])])
             (define deserialize-binding
-              (make-parameter (cons 'name-deserialize
-                                    (module-path-index-join '(submod ".." deserializer) this-modpath))))
+              (make-parameter
+               (cons 'name-deserialize
+                     (module-path-index-join '(submod ".." deserializer) this-modpath))))
             (define-syntax marked-name (make-rename-transformer #'name))
             (define #,(if m? #'(name mixin) #'name)
               (let ()
@@ -392,42 +443,11 @@
                                                        (serial-proc val)
                                                        val))))))
                  (public/override serialize-method)
-                 (define (deserialize-method data)
-                   (define sup (vector-ref data 0))
-                   (define key (vector-ref data 1))
-                   (define table (vector-ref data 2))
-                   #,(if base?
-                         #`(void)
-                         #`(super deserialize-method (if (eq? 'name key)
-                                                         sup
-                                                         data)))
-                   (unless (eq? key 'name)
-                     (log-editor-warning "Missing data for key ~a, trying super"
-                                         'name))
-                   (when (eq? key 'name)
-                     (void)
-                     #,@(for/list ([i (in-list (attribute state.marked-name))]
-                                   [p? (in-list (attribute state.persistence))]
-                                   [s? (in-list (attribute state.setter))]
-                                   [d? (in-list (attribute state.deserialize))])
-                          (define key (syntax->datum i))
-                          #`(when (hash-has-key? table '#,key)
-                              (define des-proc #,d?)
-                              (define maybe-other-val (hash-ref table '#,key))
-                              (define other-val (if des-proc
-                                                    (des-proc maybe-other-val)
-                                                    maybe-other-val))
-                              (let ([p* #,p?])
-                                (case p*
-                                  [(#t) (set! #,i other-val)]
-                                  [(#f) (void)]
-                                  [else (set! #,i (p* #,i other-val))]))))))
+                 (define deserialize-method
+                   #,(deserialize-proc #'deserialize-method #t))
                  (public/override deserialize-method)
-                 (define (copy-method other)
-                   #,(if base?
-                         #`(void)
-                         #`(super copy-method other))
-                   (set! state.marked-name (send other state-methods)) ...)
+                 (define copy-method
+                   #,(copy-proc #'copy-method))
                  (public/override copy-method)
                  (define (deserialize-binding-method)
                    deserialize-binding)
@@ -437,21 +457,30 @@
                  (public/override modpath-method)
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
+         ;; Special class used by elaborator for deserialization.
+         ;;   Because can't init racket/gui/base twice in one process...
          (begin-for-syntax
            (provide name)
            (define-member-name elaborator-deserialize-method elaborator-deserialize-key)
            (define-member-name elaborator-copy-method elaborator-copy-key)
            (define #,(if m? #'(name $) #'name)
-             (class #,(cond [base? #'object%]
-                            [m? #'(supclass $)]
-                            [else #'marked-supclass])
-               (super-new)
-               (define (elaborator-deserialize-method data)
-                 48)
-               (public/override elaborator-deserialize-method)
-               (define (elaborator-copy-method other)
-                 49)
-               (public/override elaborator-copy-method))))
+             (let ()
+               (define-local-member-name state-methods) ...
+               (class #,(cond [base? #'object%]
+                              [m? #'(supclass $)]
+                              [else #'marked-supclass])
+                 (super-new)
+                 (define elaborator-deserialize-method
+                   #,(deserialize-proc #'elaborator-deserialize-method #f))
+                 (public/override elaborator-deserialize-method)
+                 (define elaborator-copy-method
+                   #,(copy-proc #'elaborator-copy-method ))
+                 (public/override elaborator-copy-method)
+                 (define/public (state-methods) state.marked-name) ...
+                 (define state.marked-name state.default) ...
+                 (define-getter state.marked-name state.getter-name state.elaborator) ...))))
+         ;; Elaborator must be split into two parts to bind the
+         ;;   elaborator.this-editor in the template.
          (define-syntax-parser elaborator-inside
            [(_ data-id:id data orig)
             (syntax-parse #'orig
