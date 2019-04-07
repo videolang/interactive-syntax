@@ -59,12 +59,26 @@
                          (module-path-index-join "here.rkt" #f))))))
 (require 'm->r (for-syntax 'm->r))
 
+;; Placed in a sub module because the define-editor
+;;   template uses these bindings in a begin-for-syntax
+;;   block and the deserializer-submod block.
+(module elaborator-keys racket/base
+  (provide (all-defined-out))
+  (require racket/class)
+  (define elaborator-deserialize-key (generate-member-key))
+  (define elaborator-copy-key (generate-member-key)))
+(require (for-syntax 'elaborator-keys))
+
 (define-syntax-parameter current-editor-modpath-mode 'user)
 (begin-for-syntax
-  (define (package/quote-module-path)
-    (case (syntax-parameter-value #'current-editor-modpath-mode)
-      [(user) 'editor/private/editor]
-      [(package) (quote-module-path)])))
+  (define (package/quote-module-path . submods)
+    (define this-mod
+      (case (syntax-parameter-value #'current-editor-modpath-mode)
+        [(user) 'editor/private/editor]
+        [(package) (quote-module-path)]))
+    (if (null? submods)
+        this-mod
+        `(submod ,this-mod ,@submods))))
 
 ;; Because deserialized editors use a pseudo-identifier
 ;;   to resolve to an elaborator, we need to reconstruct a
@@ -245,6 +259,8 @@
      #:with copy-method (gensym 'copy)
      #:with elaborator-method (gensym 'elaborator)
      #:with modpath-method (gensym 'get-modpath)
+     #:with elaborator-deserialize-method (gensym 'deserialize)
+     #:with elaborator-copy-method (gensym 'copy)
      #:with (state-methods ...) (for/list ([i (in-list (attribute state.getter-name))])
                                   (gensym (syntax->datum i)))
      (unless (or (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
@@ -265,35 +281,42 @@
          (deserializer-submod
           (provide name-deserialize)
           (#%require racket/class
-                     #,(package/quote-module-path))
+                     #,(package/quote-module-path)
+                     #,(package/quote-module-path 'elaborator-keys))
           (define-member-name serialize-method serial-key)
           (define-member-name deserialize-method deserial-key)
           (define-member-name deserialize-binding-method deserial-binding-key)
           (define-member-name copy-method copy-key)
           (define-member-name elaborator-method elaborator-key)
           (define-member-name modpath-method modpath-key)
+          (define-member-name elaborator-deserialize-method elaborator-deserialize-key)
+          (define-member-name elaborator-copy-method elaborator-copy-key)
           (define (get-name)
-            (dynamic-require (quote-module-path ".." editor) 'name))
+            (cond [(editor-deserialize-for-elaborator)
+                   (namespace-require `(for-template ,(quote-module-path "..")))
+                   (namespace-variable-value 'name)]
+                  [else 
+                   (dynamic-require (quote-module-path ".." editor)
+                                    'name)]))
           (define name-deserialize
             (make-deserialize-info
              (λ (version args)
+               (define this (new (get-name)))
                (cond [(editor-deserialize-for-elaborator)
-                      args]
+                      (send this elaborator-deserialize-method args)]
                      [else
-                      (define this (new (get-name)))
                       (send this deserialize-method args)
-                      (send this on-state-changed)
-                      this]))
+                      (send this on-state-changed)])
+               this)
              (λ ()
-               (cond [(editor-deserialize-for-elaborator)
-                      (values 48
-                              (λ _ 56))]
-                     [else
-                      (define pattern (new (get-name)))
-                      (values pattern
-                              (λ (other)
+               (define pattern (new (get-name)))
+               (values pattern
+                       (λ (other)
+                         (cond [(editor-deserialize-for-elaborator)
+                                (send pattern copy other)]
+                               [else
                                 (send pattern copy-method other)
-                                (send pattern on-state-changed)))])))))
+                                (send pattern on-state-changed)])))))))
          (editor-submod
           (provide name)
           (#%require #,(package/quote-module-path))
@@ -416,11 +439,19 @@
                  marked-body ...)))))
          (begin-for-syntax
            (provide name)
+           (define-member-name elaborator-deserialize-method elaborator-deserialize-key)
+           (define-member-name elaborator-copy-method elaborator-copy-key)
            (define #,(if m? #'(name $) #'name)
              (class #,(cond [base? #'object%]
                             [m? #'(supclass $)]
                             [else #'marked-supclass])
-               (super-new))))
+               (super-new)
+               (define (elaborator-deserialize-method data)
+                 48)
+               (public/override elaborator-deserialize-method)
+               (define (elaborator-copy-method other)
+                 49)
+               (public/override elaborator-copy-method))))
          (define-syntax-parser elaborator-inside
            [(_ data-id:id data orig)
             (syntax-parse #'orig
