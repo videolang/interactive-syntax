@@ -202,6 +202,8 @@
                     (~optional (~seq #:deserialize deserialize) #:defaults ([deserialize #'#f]))
                     (~optional (~seq #:init init) #:defaults ([init #'#f]))
                     (~optional (~seq #:elaborator elaborator) #:defaults ([elaborator #'#f]))
+                    (~optional (~seq #:elaborator-default elaborator-default)
+                               #:defaults ([elaborator-default #'#f]))
                     (~once default))
               ...)))
   (define-syntax-class defstate
@@ -218,7 +220,8 @@
              #:attr setter #'options.setter
              #:attr serialize #'options.serialize
              #:attr deserialize #'options.deserialize
-             #:attr elaborator #'options.elaborator)))
+             #:attr elaborator #'options.elaborator
+             #:attr elaborator-default #'options.elaborator-default)))
 
 (define-syntax-parameter define-elaborate
   (syntax-parser
@@ -362,7 +365,7 @@
                (values pattern
                        (λ (other)
                          (cond [(editor-deserialize-for-elaborator)
-                                (send pattern copy other)]
+                                (send pattern elaborator-copy-method other)]
                                [else
                                 (send pattern copy-method other)
                                 (send pattern on-state-changed)])))))))
@@ -474,10 +477,10 @@
                    #,(deserialize-proc #'elaborator-deserialize-method #f))
                  (public/override elaborator-deserialize-method)
                  (define elaborator-copy-method
-                   #,(copy-proc #'elaborator-copy-method ))
+                   #,(copy-proc #'elaborator-copy-method))
                  (public/override elaborator-copy-method)
                  (define/public (state-methods) state.marked-name) ...
-                 (define state.marked-name state.default) ...
+                 (define state.marked-name state.elaborator-default) ...
                  (define-getter state.marked-name state.getter-name state.elaborator) ...))))
          ;; Elaborator must be split into two parts to bind the
          ;;   elaborator.this-editor in the template.

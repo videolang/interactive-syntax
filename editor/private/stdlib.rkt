@@ -26,7 +26,9 @@
                        racket/dict
                        file/convertible
                        racket/math
-                       (except-in racket/gui/base
+                       racket/draw
+                       racket/gui/event
+                       #;(except-in racket/gui/base
                                   editor-snip%
                                   editor-canvas%))
            racket/contract/base
@@ -697,23 +699,25 @@
   (define-editor-mixin text$$
     #:mixins (signaler$$)
     (inherit get-persistence)
-    (init [(internal-font font) normal-control-font]
-          [(internal-text text) ""])
+    (init [(internal-text text) ""])
     (define-state text-width 0)
     (define-state text-height 0)
-    (define-state font '())
-    (define/public (get-font)
-      (apply make-object font% font))
-    (define/public (set-font f)
-      (set! font (list (send f get-size)
-                       (send f get-face)
-                       (send f get-family)
-                       (send f get-style)
-                       (send f get-weight)
-                       (send f get-underlined)
-                       (send f get-smoothing)
-                       (send f get-size-in-pixels)
-                       (send f get-hinting))))
+    (define-state font #f
+      #:init (λ (i)
+               (or i
+                   (dynamic-require 'racket/gui/base 'normal-control-font)))
+      #:deserialize (λ (lst)
+                      (apply make-object font% lst))
+      #:serialize (λ (f)
+                    (list (send f get-size)
+                          (send f get-face)
+                          (send f get-family)
+                          (send f get-style)
+                          (send f get-weight)
+                          (send f get-underlined)
+                          (send f get-smoothing)
+                          (send f get-size-in-pixels)
+                          (send f get-hinting))))
     (define-state scale? #f)
     (define-state text ""
       #:setter (λ (t #:signal? [signal? #f])
@@ -737,8 +741,7 @@
       (send dc draw-text text (+ l x) (+ t y))
       (send dc set-font old-font))
     (send this set-background "white" 'transparent)
-    (set-text! internal-text)
-    (set-font internal-font))
+    (set-text! internal-text))
 
   (define-editor label$ (text$$ widget$)
     (super-new)
@@ -1060,6 +1063,7 @@
     (inherit set-frame! get-frame)
     (init [title "Dialog"])
     (super-new)
+    (define dialog% (dynamic-require 'racket/gui/base 'dialog%))
     (unless (get-frame)
       (set-frame! (new dialog%
                        [label title])))
