@@ -97,21 +97,17 @@
 ;;  the editor.
 (define-syntax-parser #%editor
   [(_ binding-information body)
-   #`(splicing-let-syntax
-         ([this (λ (stx)
-                  (parameterize ([current-load-relative-directory (this-mod-dir)])
-                    (match-define `((,editor-binding ,editor-name)
-                                    (,deserialize-binding ,deserialize-name)
-                                    (,elaborator-binding ,elaborator-name))
-                      (deserialize 'binding-information))
-                    (define/syntax-parse elaborator
-                      (forge-identifier
-                       ;syntax-local-lift-require
-                       elaborator-binding
-                       elaborator-name))
-                    (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
-                    #'(elaborator body that-syntax)))])
-       (this))])
+   (parameterize ([current-load-relative-directory (this-mod-dir)])
+     (match-define `((,editor-binding ,editor-name)
+                     (,deserialize-binding ,deserialize-name)
+                     (,elaborator-binding ,elaborator-name))
+       (deserialize (syntax->datum #'binding-information)))
+     (define/syntax-parse elaborator
+       (forge-identifier
+        elaborator-binding
+        elaborator-name))
+     (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
+     #'(elaborator body that-syntax))])
 
 ;; Returns an identifier that contains
 ;;   the binding for an editor's elaborator.
@@ -252,7 +248,7 @@
          (~seq (~alt plain-state:defstate
                      (~optional elaborator:defelaborate
                                 #:defaults ([elaborator.data #'this-data]
-                                            [elaborator.this-editor #'this-editor]
+                                            [elaborator.this-editor #'#f]
                                             [(elaborator.body 1) (list #'#'this-editor)]))
                      internal-body) ...)
          (~seq body ...)))
@@ -492,20 +488,26 @@
                        (parameterize ([(dynamic-require
                                         '#,(package/quote-module-path)
                                         'editor-deserialize-for-elaborator) #t])
-                         (deserialize (syntax->datum #'data))))]
-               #:with elaborator.this-editor #'data-id
+                         (deserialize (syntax->datum #'data))))
+                     (define/syntax-parse
+                       #,(if (syntax->datum #'elaborator.this-editor)
+                             #'elaborator.this-editor
+                             #'ignored-binding)
+                       #'data-id)]
                elaborator.body ...])])
          (define-syntax elaborator-name
-           (elaborator-transformer #'elaborator-inside)))]))
+           (elaborator-transformer #'elaborator-inside elaborator.this-editor)))]))
 
-(define-for-syntax (elaborator-transformer inside)
+(define-for-syntax (elaborator-transformer inside use-elaborator-this?)
   (syntax-parser
     [(_ data orig)
      #:with elaborator-inside inside
-     #`(splicing-let ([data-id
-                       (parameterize ([current-load-relative-directory (this-mod-dir)])
-                         (deserialize 'data))])
-         (elaborator-inside data-id data orig))]))
+     (if use-elaborator-this?
+         #`(splicing-let ([data-id
+                           (parameterize ([current-load-relative-directory (this-mod-dir)])
+                             (deserialize 'data))])
+             (elaborator-inside data-id data orig))
+         #'(elaborator-inside data-id data orig))]))
 
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
