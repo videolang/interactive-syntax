@@ -703,6 +703,8 @@
     (define-state text-width 0)
     (define-state text-height 0)
     (define-state font #f
+      #:getter #t
+      #:setter #t
       #:init (λ (i)
                (or i
                    (dynamic-require 'racket/gui/base 'normal-control-font)))
