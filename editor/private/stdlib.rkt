@@ -152,11 +152,13 @@
   
   (define-editor-mixin signaler$$
     #:interfaces (signaler<$>)
+    (inherit get-persistence)
     (super-new)
-    (init [(ir receiver) '()]
-          [(cb callback) #f])
+    (init [(ir receiver) '()])
     (define-state receivers (mutable-set))
-    (define-state callback cb)
+    (define-state callback #f
+      #:persistence (get-persistence)
+      #:init #t)
     (define/public (signal event)
       (cond
         [(procedure? callback)
@@ -798,20 +800,23 @@
            [_ (void)])])))
 
   (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
-    (inherit resize-content has-focus?)
+    (inherit resize-content
+             has-focus?
+             get-persistence)
     (super-new)
     (init [(il label) #f])
     (define mouse-state 'up)
     (define-state label #f
+      #:persistence (get-persistence)
       #:getter #t
       #:setter (λ (l)
                  (set! label l)
                  (match-define-values (w h _ _ _ _)
                    (send l get-extent (send l get-x) (send l get-y)))
                  (resize-content w h)))
-    (define-state up-color "Silver")
-    (define-state hover-color "DarkGray")
-    (define-state down-color "DimGray")
+    (define up-color "Silver")
+    (define hover-color "DarkGray")
+    (define down-color "DimGray")
     (define/override (set-focus f)
       (super set-focus f)
       (set! mouse-state (if f 'hover 'up)))
@@ -867,9 +872,12 @@
       (set-label! il)))
 
   (define-editor toggle$ (signaler$$ (focus$$ (padding$$ widget$)))
-    (inherit resize-content has-focus?)
+    (inherit resize-content
+             has-focus?
+             get-persistence)
     (super-new)
     (define-state value #f
+      #:persistence (get-persistence)
       #:getter #t
       #:setter #t)
     (define-state mouse-state 'up)
