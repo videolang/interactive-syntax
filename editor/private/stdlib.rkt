@@ -28,6 +28,7 @@
                        racket/math
                        racket/draw
                        racket/gui/event
+                       racket/pretty
                        #;(except-in racket/gui/base
                                   editor-snip%
                                   editor-canvas%))
@@ -201,7 +202,7 @@
   (define-editor widget$ (get-path$$ base$)
     (super-new)
     (init [(internal-parent parent) #f]
-          [(ip persist) #f])
+          [(ip persistence) #f])
     (define persist ip)
     (define/public (get-persistence) persist)
     (define-state x 0
@@ -428,6 +429,11 @@
     (define/public (set-child-focus [child #f])
       (set-focus! child)
       (and focus #t))
+    (define/public (get-child-position child)
+      (define coords (hash-ref children child
+                               (λ ()
+                                 (error 'pasteboard$ "Couldn't find editor ~a" child))))
+      (values (car coords) (cdr coords)))
     (define/public (next-child-focus #:wrap [wrap #f])
       (error "TODO"))
     (define/public (previous-child-focus #:wrap [wrap #f])
