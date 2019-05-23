@@ -404,7 +404,7 @@
     (define-state min-width 0
       #:persistence #f
       #:init #t)
-    (define-state children (hash)
+    (define-state children '()
       #:persistence (get-persistence)
       #:getter #t)
     (define-state focus #f
@@ -414,7 +414,7 @@
                  (set! focus child)))
     (super-new)
     (define/public (add-child child [x 0] [y 0])
-      (set! children (hash-set children child (cons x y))))
+      (set! children (dict-set children child (cons x y))))
     (define/public (remove-child [child #f])
       (define elem
         (or child (let ([k (dict-iterate-first children)])
@@ -430,7 +430,7 @@
       (set-focus! child)
       (and focus #t))
     (define/public (get-child-position child)
-      (define coords (hash-ref children child
+      (define coords (dict-ref children child
                                (λ ()
                                  (error 'pasteboard$ "Couldn't find editor ~a" child))))
       (values (car coords) (cdr coords)))
