@@ -8,4 +8,5 @@
      #:args (file)
      file))
 
-  (dynamic-require `(submod ,the-file editor test) #f))
+  (with-handlers* ([exn:fail? (λ (e) (dynamic-require `(submod ,the-file editor) #f))])
+    (dynamic-require `(submod ,the-file editor test) #f)))

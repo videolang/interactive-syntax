@@ -64,13 +64,7 @@
               (define s (open-output-bytes))
               (send bit save-file s 'png)
               (get-output-bytes s)]
-             [else default]))]
-        [prop:equal+hash
-         (list (λ (this other rec)
-                 (equal? (serialize this)
-                         (serialize other)))
-               (λ (this rec) (equal-hash-code (serialize this)))
-               (λ (this req) (equal-secondary-hash-code (serialize this))))])
+             [else default]))])
        partial-extent
        (get-extent (->m real? real? (values real? real? real? real? real? real?)))
        (resize (->m real? real? any/c))
@@ -154,12 +148,12 @@
   (define-editor-mixin signaler$$
     #:interfaces (signaler<$>)
     (inherit get-persistence)
-    (super-new)
     (init [(ir receiver) '()])
     (define-state receivers (mutable-set))
     (define-state callback #f
       #:persistence (get-persistence)
       #:init #t)
+    (super-new)
     (define/public (signal event)
       (cond
         [(procedure? callback)
@@ -321,7 +315,7 @@
       parent)
     (define/public (register-parent other)
       (set! parent other))
-    (define/public (in-bounds? event)
+    (define/public (in-bounds? event [x x] [y y])
       (define mouse-x (send event get-x))
       (define mouse-y (send event get-y))
       (and (<= x mouse-x (+ x content-width))
@@ -398,13 +392,15 @@
   (define-editor pasteboard$ widget$
     #:interfaces (parent<$>)
     (inherit in-bounds? get-persistence)
+    (define extra-width 100)
+    (define extra-height 100)
     (define-state min-height 0
       #:persistence #f
       #:init #t)
     (define-state min-width 0
       #:persistence #f
       #:init #t)
-    (define-state children '()
+    (define-state children (hash)
       #:persistence (get-persistence)
       #:getter #t)
     (define-state focus #f
@@ -445,7 +441,9 @@
     (define/override (on-event event x y)
       (super on-event event x y)
       (cond [(is-a? event mouse-event%)
+             (printf "MOUSE: ~a~n" (list x y (send event get-x) (send event get-y)))
              (when (in-bounds? event)
+               (writeln "IN BOUNDS")
                (match (send event get-event-type)
                  ;; Set focus or move child
                  ['left-down
@@ -467,8 +465,8 @@
       (define-values (w h l t r b) (super get-extent x y))
       (for/fold ([min-width (max min-width w)]
                  [min-height (max min-height h)]
-                 #:result (values min-width
-                                  min-height
+                 #:result (values (+ min-width extra-width)
+                                  (+ min-height extra-height)
                                   l t r b))
                 ([(child pos) (in-dict children)])
         (define x (car pos))
@@ -727,7 +725,8 @@
                           (send f get-underlined)
                           (send f get-smoothing)
                           (send f get-size-in-pixels)
-                          (send f get-hinting))))
+                          (send f get-hinting)))
+      #:persistence (get-persistence))
     (define-state scale? #f)
     (define-state text ""
       #:setter (λ (t #:signal? [signal? #f])
@@ -871,7 +870,9 @@
                                    ['hover hover-color]
                                    ['down down-color]))]))
       (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
-      (send label draw dc (+ mx pl) (+ my pt))
+      (if label
+          (send label draw dc (+ mx pl) (+ my pt))
+          (error 'button$ "Missing label"))
       (send dc set-pen old-pen)
       (send dc set-brush old-brush))
     (when il
@@ -951,15 +952,16 @@
   (define-editor radio$ vertical/horizontal-block$
     (inherit get-persistence
              get-editor-list)
-    (define selected #f)
+    (define-state selected #f
+      #:persistence (get-persistence))
     (define-state children '()
       #:persistence (get-persistence))
     (super-new)
     (define/override (add-child child)
       (define option (new horizontal-block$))
       (define toggle (new toggle$ [parent option]))
-      (set! children (append (cons children toggle) child))
       (send toggle add-child child)
+      (set! children (append children option))
       (super add-child toggle))
     (define/override (remove-child child)
       (define index (index-where children

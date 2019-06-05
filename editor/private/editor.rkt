@@ -38,6 +38,9 @@
 (define copy-key (generate-member-key))
 (define elaborator-key (member-name-key elaborate))
 (define modpath-key (member-name-key get-modpath))
+(define equal?-key (generate-member-key))
+(define hash-key (generate-member-key))
+(define hash2-key (generate-member-key))
 
 (define editor-deserialize-for-elaborator
   (make-parameter #f))
@@ -70,6 +73,13 @@
   (define elaborator-copy-key (generate-member-key)))
 (require (for-syntax 'elaborator-keys))
 
+
+;; Runtime test for persistence. In case the syntax check did not work.
+(define (runtime-persist? persist this [other #f])
+  (cond
+    [(procedure? persist) (persist this other)]
+    [else persist]))
+
 (define-syntax-parameter current-editor-modpath-mode 'user)
 (begin-for-syntax
   (define (package/quote-module-path . submods)
@@ -94,20 +104,30 @@
    sym))
 
 ;; Only introduced by #editor reader macro. Handles deserializing
-;;  the editor.
-(define-syntax-parser #%editor
-  [(_ binding-information body)
-   (parameterize ([current-load-relative-directory (this-mod-dir)])
-     (match-define `((,editor-binding ,editor-name)
-                     (,deserialize-binding ,deserialize-name)
-                     (,elaborator-binding ,elaborator-name))
-       (deserialize (syntax->datum #'binding-information)))
-     (define/syntax-parse elaborator
-       (forge-identifier
-        elaborator-binding
-        elaborator-name))
-     (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
-     #'(elaborator body that-syntax))])
+;;    the editor.
+;; It shouldn't need to be a stuct, because the logic _should_ be part
+;;    of the reader proper.
+(begin-for-syntax
+  (define read-#%editor
+    (syntax-parser
+      [(_ binding-information body)
+       (parameterize ([current-load-relative-directory (this-mod-dir)])
+         (match-define `((,editor-binding ,editor-name)
+                         (,deserialize-binding ,deserialize-name)
+                         (,elaborator-binding ,elaborator-name))
+           (deserialize (syntax->datum #'binding-information)))
+         (define/syntax-parse elaborator
+           (forge-identifier
+            elaborator-binding
+            elaborator-name))
+         (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
+         #'(elaborator body that-syntax))]))
+  (struct #%editor-struct ()
+    #:property prop:procedure
+    (λ (this stx) (read-#%editor stx))
+    #:property prop:match-expander
+    read-#%editor))
+(define-syntax #%editor (#%editor-struct))
 
 ;; Returns an identifier that contains
 ;;   the binding for an editor's elaborator.
@@ -185,10 +205,23 @@
 
 (begin-for-syntax
   (define-syntax-class defelaborate
+    #:attributes (type
+                  data
+                  this-editor
+                  [body 1]
+                  struct)
     #:literals (define-elaborate)
     (pattern (define-elaborate data
                (~optional (~seq #:this-editor this-editor))
-               body ...+)))
+               body ...+)
+             #:attr struct #f
+             #:attr type 'simple)
+    (pattern (define-elaborate
+               struct)
+             #:attr data #f
+             #:attr this-editor #f
+             #:attr (body 1) '()
+             #:attr type 'struct))
   (define-splicing-syntax-class defstate-options
     (pattern (~seq
               (~alt (~optional (~seq #:persistence persistence) #:defaults ([persistence #'#t]))
@@ -247,9 +280,11 @@
         (~and
          (~seq (~alt plain-state:defstate
                      (~optional elaborator:defelaborate
-                                #:defaults ([elaborator.data #'this-data]
+                                #:defaults ([elaborator.type 'simple]
+                                            [elaborator.data #'this-data]
                                             [elaborator.this-editor #'#f]
-                                            [(elaborator.body 1) (list #'#'this-editor)]))
+                                            [(elaborator.body 1)
+                                             (list #'#'#f)])) ; ???  #'#'this-editor instead ???
                      internal-body) ...)
          (~seq body ...)))
      #:with marked-name (editor/user-syntax-introduce #'name)
@@ -267,6 +302,9 @@
      #:with modpath-method (gensym 'get-modpath)
      #:with elaborator-deserialize-method (gensym 'deserialize)
      #:with elaborator-copy-method (gensym 'copy)
+     #:with equal?-method (gensym 'equal?)
+     #:with hash-method (gensym 'hash/)
+     #:with hash2-method (gensym 'hash2/)
      #:with (state-methods ...) (for/list ([i (in-list (attribute state.getter-name))])
                                   (gensym (syntax->datum i)))
      (unless (or (eq? 'module-begin (syntax-local-context)) (eq? 'module (syntax-local-context)))
@@ -283,14 +321,14 @@
            #,(if base?
                  #`(void)
                  #`(super #,rec (if (eq? 'name key)
-                                                 sup
-                                                 data)))
+                                    sup
+                                    data)))
            (unless (eq? key 'name)
              (log-editor-warning "Missing data for key ~a, trying super"
                                  'name))
            (when (eq? key 'name)
              (void)
-             #,@(for/list ([i (in-list (attribute state.marked-name))]
+            #,@(for/list ([i (in-list (attribute state.marked-name))]
                            [p? (in-list (attribute state.persistence))]
                            [s? (in-list (attribute state.setter))]
                            [d? (in-list (attribute state.deserialize))]
@@ -315,6 +353,36 @@
                  #`(void)
                  #`(super #,rec other))
            (set! state.marked-name (send other state-methods)) ...))
+     (define (equal?-proc rec)
+       #`(λ (other equal?/rec)
+           (and #,(if base?
+                      #'#t
+                      #`(super #,rec other equal?/rec))
+                (let ()
+                  (define left (state-methods))
+                  (define right (send other state-methods))
+                  (or (not (runtime-persist? state.persistence left other))
+                      (equal?/rec left right))) ...)))
+     (define (hash-proc rec)
+       #`(λ (hash/rec)
+           (+ #,(if base?
+                    #'0
+                    #`(super #,rec hash/rec))
+              (let ()
+                (define left (state-methods))
+                (if (runtime-persist? state.persistence left)
+                    (hash/rec left)
+                    0)) ...)))
+     (define (hash2-proc rec)
+       #`(λ (hash2/rec)
+           (* #,(if base?
+                    #'1
+                    #`(super #,rec hash2/rec))
+              (let ()
+                (define left (state-methods))
+                (if (runtime-persist? state.persistence left)
+                    (hash2/rec left)
+                    1)) ...)))
      #`(begin
          #,@(if m?
                 (list)
@@ -378,6 +446,9 @@
           (define-member-name copy-method copy-key)
           (define-member-name elaborator-method elaborator-key)
           (define-member-name modpath-method modpath-key)
+          (define-member-name equal?-method equal?-key)
+          (define-member-name hash-method hash-key)
+          (define-member-name hash2-method hash2-key)
           (splicing-syntax-parameterize
               ([define-state
                  (syntax-parser
@@ -413,7 +484,14 @@
                                         (send this serialize-method)))
                                      deserialize-binding
                                      #t
-                                     (or (current-load-relative-directory) (current-directory)))]))
+                                     (or (current-load-relative-directory) (current-directory)))]
+                                   [prop:equal+hash
+                                    (list (λ (this other rec)
+                                            (send this equal?-method other rec))
+                                          (λ (this rec)
+                                            (send this hash-method rec))
+                                          (λ (this rec)
+                                            (send this hash2-method rec)))]))
                    marked-interfaces ...)
                   #f)
                  (define (elaborator-method)
@@ -454,6 +532,15 @@
                  (define (modpath-method)
                    (list this-modpath 'name))
                  (public/override modpath-method)
+                 (define equal?-method
+                   #,(equal?-proc #'equal?-method))
+                 (public/override equal?-method)
+                 (define hash-method
+                   #,(hash-proc #'hash-method))
+                 (public/override hash-method)
+                 (define hash2-method
+                   #,(hash2-proc #'hash2-method))
+                 (public/override hash2-method)
                  (define/public (state-methods) state.marked-name) ...
                  marked-body ...)))))
          ;; Special class used by elaborator for deserialization.
@@ -496,7 +583,10 @@
                        #'data-id)]
                elaborator.body ...])])
          (define-syntax elaborator-name
-           (elaborator-transformer #'elaborator-inside elaborator.this-editor)))]))
+           #,(case (attribute elaborator.type)
+               [(struct) #'elaborator.struct]
+               [(simple)
+                #`(elaborator-transformer #'elaborator-inside elaborator.this-editor)])))]))
 
 (define-for-syntax (elaborator-transformer inside use-elaborator-this?)
   (syntax-parser
