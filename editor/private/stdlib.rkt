@@ -216,10 +216,25 @@
     (define/private (set-pos! x* y*)
       (set! x x*)
       (set! y y*))
+    (define content-extent-stale? #t)
     (define-state content-width 0
-      #:persistence (get-persistence))
+      #:persistence (get-persistence)
+      #:getter (λ ()
+                 (when content-extent-stale?
+                   (define-values (w h) (get-content-extent))
+                   (set! content-width w)
+                   (set! content-height h)
+                   (set! content-extent-stale? #f))
+                 content-width))
     (define-state content-height 0
-      #:persistence (get-persistence))
+      #:persistence (get-persistence)
+      #:getter (λ ()
+                 (when content-extent-stale?
+                   (define-values (w h) (get-content-extent))
+                   (set! content-width w)
+                   (set! content-height h)
+                   (set! content-extent-stale? #f))
+                 content-height))
     (define-state top-margin 1
       #:persistence (get-persistence))
     (define-state bottom-margin 1
@@ -289,7 +304,9 @@
       (send dc set-pen old-pen)
       (send dc set-brush old-brush))
     (define/public (get-content-extent)
-      (values content-width content-height))
+      (if content-extent-stale?
+          (error 'widget$ "Known content extent stale")
+          (values content-width content-height)))
     (define/public (resize-content w h)
       (local-resize-content w h))
     (define (local-resize-content w h)
