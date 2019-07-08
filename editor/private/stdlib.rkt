@@ -458,9 +458,7 @@
     (define/override (on-event event x y)
       (super on-event event x y)
       (cond [(is-a? event mouse-event%)
-             (printf "MOUSE: ~a~n" (list x y (send event get-x) (send event get-y)))
              (when (in-bounds? event)
-               (writeln "IN BOUNDS")
                (match (send event get-event-type)
                  ;; Set focus or move child
                  ['left-down
