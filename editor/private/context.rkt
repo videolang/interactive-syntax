@@ -195,9 +195,10 @@
                (define file (send editor get-filename))
                (and (not (unbox tmp)) file)]
               [else #f]))
-      (if (path-string? maybe-filename)
+      #;(if (path-string? maybe-filename)
           (path-only maybe-filename)
-          maybe-filename))
+          maybe-filename)
+      maybe-filename)
     (define/public (read-special src line col pos)
       (cond [(editor-read-as-snip?) this]
             [else

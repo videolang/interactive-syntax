@@ -13,9 +13,11 @@
          racket/match
          racket/stxparam
          (for-syntax racket/base
+                     racket/dict
                      racket/class
                      (submod "lang.rkt" key-submod)
                      "log.rkt"
+                     syntax/modresolve
                      racket/match
                      racket/serialize
                      racket/function
@@ -59,8 +61,8 @@
         modpath))
   (define-syntax (this-mod-dir stx)
     (syntax/loc stx
-      (modpath->relpath (resolve-module-path-index
-                         (module-path-index-join "here.rkt" #f))))))
+      (resolve-module-path-index
+       (module-path-index-join "here.rkt" #f)))))
 (require 'm->r (for-syntax 'm->r))
 
 ;; Placed in a sub module because the define-editor
@@ -91,17 +93,48 @@
         this-mod
         `(submod ,this-mod ,@submods))))
 
+;; Finds the original source of an identifier. Assumes that
+;;   the module chain has already been loaded.
+;; ModulePath Symbol -> (Pair ModulePathIndex Symbol)
+(define-for-syntax (identifier->original-identifier module sym [phase 0])
+  (define-values (vals stxs)
+    (module->exports module 'defined-names))
+  (define binding
+    (let* ([acc (dict-ref stxs phase)])
+      (dict-ref acc sym)))
+  (match binding
+    [`(() ,orig-sym)
+     (cons module orig-sym)]
+    [`(((,mpi ,shift-phase ,orig-sym ,orig-phase) ,rest ...) ,eventual-sym)
+     (identifier->original-identifier mpi orig-sym orig-phase)]
+    [`((,mpi ,rest ...) ,orig-sym)
+     (identifier->original-identifier mpi sym phase)]))
+
 ;; Because deserialized editors use a pseudo-identifier
 ;;   to resolve to an elaborator, we need to reconstruct a
 ;;   racket identifier out of their symbol and modpath.
+;; Unless find-original? is set to #f, this function will use
+;;   identifier->original-identifier to forge the defining identifier,
+;;   and puts the given identifier in the nominal source fields.
 ;; NOTE THIS DOES NOT ACTUALLY REQUIRE THE MODPATH, USE
 ;;   syntax-local-lift-require FOR THAT!!!!  (Rather, this uses
 ;;   whatever module exists in the registry under that name.)
-;; resolved-module-path? symbol? -> identifier?
-(define-for-syntax (forge-identifier modpath sym)
-  (syntax-binding-set->syntax
-   (syntax-binding-set-extend (syntax-binding-set) sym 0 modpath)
-   sym))
+;; resolved-module-path? symbol? boolean? -> identifier?
+(define-for-syntax (forge-identifier modpath sym [find-original? #t])
+  (parameterize ([current-namespace (make-base-namespace)])
+    (when find-original?
+      (namespace-require modpath))
+    (define real-id (if find-original?
+                        (identifier->original-identifier modpath sym)
+                        (cons #f #f)))
+    (define real-modpath (or (car real-id) modpath))
+    (define real-sym (or (cdr real-id) sym))
+    (let* ([acc (syntax-binding-set)]
+           [acc (syntax-binding-set-extend acc sym 0 real-modpath
+                                           #:source-symbol real-sym
+                                           #:nominal-symbol sym
+                                           #:nominal-module modpath)])
+      (syntax-binding-set->syntax acc sym))))
 
 ;; Only introduced by #editor reader macro. Handles deserializing
 ;;    the editor.
@@ -116,11 +149,21 @@
                          (,deserialize-binding ,deserialize-name)
                          (,elaborator-binding ,elaborator-name))
            (deserialize (syntax->datum #'binding-information)))
+         (define same-mod? (equal? (resolve-module-path-index elaborator-binding)
+                                   (this-mod-dir)))
+         ;; If the editor definition and use are from the same file,
+         ;;  then the current module is not yet named.
+         ;; So eval variable-reference to get it.
          (define/syntax-parse elaborator
-           (forge-identifier
-            elaborator-binding
-            elaborator-name))
+           (if same-mod?
+               (forge-identifier
+                (variable-reference->module-path-index (eval #'(#%variable-reference)))
+                elaborator-name
+                #f)
+               (forge-identifier elaborator-binding elaborator-name)))
          (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
+         ;(pretty-write (identifier-binding #'elaborator))
+         ;(pretty-write (syntax-debug-info #'elaborator))
          #'(elaborator body that-syntax))]))
   (struct #%editor-struct ()
     #:property prop:procedure
@@ -130,9 +173,9 @@
 (define-syntax #%editor (#%editor-struct))
 
 ;; Returns an identifier that contains
-;;   the binding for an editor's elaborator.
+;;   the binding for an editor, elaborator, and deserializer.
 ;; To be put into the #editor()() form.
-;; (is-a?/c editor$) -> (listof module-path-index? symbol?)
+;; (is-a?/c editor$) -> (listof (list module-path-index? symbol?))
 (define (editor->elaborator editor)
   (define-member-name elaborator elaborator-key)
   (define-member-name deserialize-binding deserial-binding-key)
@@ -574,7 +617,8 @@
                #:do [(define elaborator.data
                        (parameterize ([(dynamic-require
                                         '#,(package/quote-module-path)
-                                        'editor-deserialize-for-elaborator) #t])
+                                        'editor-deserialize-for-elaborator) #t]
+                                      [current-load-relative-directory (this-mod-dir)])
                          (deserialize (syntax->datum #'data))))
                      (define/syntax-parse
                        #,(if (syntax->datum #'elaborator.this-editor)

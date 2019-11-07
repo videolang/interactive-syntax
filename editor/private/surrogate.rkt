@@ -97,7 +97,7 @@
                            [current-module-declare-name
                             (and maybe-filename (make-resolved-module-path maybe-filename))]
                            [current-load-relative-directory
-                            (or (maybe-path-only maybe-filename) (current-load-relative-directory))])
+                            (or maybe-filename (current-load-relative-directory))])
               (eval mod-stx))
             (namespace-require/expansion-time mod-name)
             (namespace-require (from-editor mod-name))
@@ -170,7 +170,10 @@
                        (parameterize ([current-readtable (make-editor-readtable)])
                          (read))))]
                   [else edi])))
-        (define des (eval `(deserialize ',editor) editor-namespace))
+        (define des
+          (parameterize ([current-load-relative-directory
+                          (or filename (current-load-relative-directory))])
+            (eval `(deserialize ',editor) editor-namespace)))
         (send text delete (sub1 (second e)) (sub1 (third e)) #f)
         (send text insert (new editor-snip%
                                [editor des]

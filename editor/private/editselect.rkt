@@ -76,6 +76,7 @@
             (define text (send this get-definitions-text))
             (define text-surrogate (send text get-surrogate))
             (define the-editor (get-module this))
+            (writeln the-editor)
             (when (and the-editor (pair? the-editor))
               (define editor-class$
                 (cond

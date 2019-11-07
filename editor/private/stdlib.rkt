@@ -384,6 +384,9 @@
         ;; Remove an existing child from the collection
         (remove-child (or/c (->*m () ((is-a?/c editor<$>)) any)
                             any/c))
+        ;; Clear all children from the parent
+        (clear (or/c (->*m () () any)
+                     any/c))
         ;; Call (generally from a child) when they have been resized.
         ;; This gives the parent a chance to adjust its other children.
         (resized-child (->m (is-a?/c editor<$>) any))
@@ -436,6 +439,9 @@
         (set! children (dict-remove children elem))
         (when (equal? focus elem)
           (set! focus #f))))
+    (define/public (clear)
+      (set! children (hash))
+      (set! focus #f))
     (define/public (move-child child new-x new-y)
       (set! children
             (dict-update children child (cons new-x new-y))))
@@ -521,7 +527,7 @@
     (define/public (add-child editor [index #f])
       (cond [index
              (define-values (head tail) (split-at editor-list index))
-             (append head (list editor) tail)
+             (set! editor-list (append head (list editor) tail))
              (send editor register-parent this)
              (resized-child editor)]
             [else
@@ -535,6 +541,10 @@
       (resized-child removed-editor)
       (resized-child new-editor))
     (define/public (remove-child [editor #f])
+      (when editor
+        (writeln editor-list)
+        (writeln editor)
+        (writeln (index-of editor-list editor)))
       (when (empty? editor-list)
         (error 'remove-editor "List widget already empty"))
       (define index (if editor
@@ -546,6 +556,11 @@
       (send removed-editor register-parent #f)
       (set! editor-list (remq removed-editor editor-list))
       (resized-child removed-editor))
+    (define/public (clear)
+      (for ([child (in-list editor-list)])
+        (send child register-parent #f)
+        (resized-child child))
+      (set! editor-list '()))
     (define/public (count)
       (length editor-list))
     (define/public (in-children)
@@ -902,8 +917,11 @@
           (error 'button$ "Missing label"))
       (send dc set-pen old-pen)
       (send dc set-brush old-brush))
-    (when il
-      (set-label! il)))
+    (cond
+      [(string? il)
+       (set-label! (new label$ [text il]))]
+      [(eq? il #f) (void)]
+      [else (set-label! il)]))
 
   (define-editor toggle$ (signaler$$ (focus$$ (padding$$ widget$)))
     (inherit resize-content
