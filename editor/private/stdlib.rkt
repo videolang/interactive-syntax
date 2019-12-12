@@ -1038,7 +1038,9 @@
              set-text!
              get-persistence)
     (super-new)
-    (send this set-background "white")
+    (define-state background #f
+      #:init #t)
+    (send this set-background (or background "white"))
     (define/public (get-max-extent x y)
       (match-define-values (w h _ _ _ _)
         (get-extent x y))
@@ -1164,6 +1166,8 @@
     (init [option values])
     (define/public (get-option)
       opt)
+    (define-state font #f
+      #:init #t)
     (define-state label #f
       #:init #t)
     (define-state bundle #f
@@ -1173,6 +1177,7 @@
     (define-state bundle-label label
       #:init #t)
     (new label$ [parent this]
+         [font font]
          [text label])
     (define opt (option this))
     (when bundle

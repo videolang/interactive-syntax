@@ -42,7 +42,7 @@
                [paint-callback (λ (c dc)
                                  (send editor draw dc 0 0)
                                  (match-define-values (width height _ _ _ _)
-                                   (send editor get-extent (send editor get-x) (send editor get-y)))
+                                   (send editor get-extent 0 0)) ;(send editor get-x) (send editor get-y)))
                                  (min-width (exact-ceiling width))
                                  (min-height (exact-ceiling height)))])
     (send editor set-context this)
