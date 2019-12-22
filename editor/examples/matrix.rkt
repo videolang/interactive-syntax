@@ -47,8 +47,6 @@
 (define-editor cell$ field$
   (init [(ir row) 0]
         [(ic col) 0])
-  (define/override (on-event event x y)
-    (super on-event event x y))
   (define-state row ir
     #:getter #t
     #:persistence #f)
@@ -172,8 +170,6 @@
 
 (begin-for-editor
   (module+ test
-    (require (prefix-in gui: racket/gui/base)
-             editor/private/context)
-    (define matrix (new matrix$))
-    (new editor-snip% [editor matrix])))
+    (require editor/test)
+    (test-window (new matrix$))))
 
