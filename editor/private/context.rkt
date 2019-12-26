@@ -208,7 +208,7 @@
                             editor-datum
                             (vector src line col pos (string-length (format "~s" editor-datum))))]))
     (define/override (write f)
-      (define text (string->bytes/utf-8 (get-text 0 0)))
+      (define text (string->bytes/utf-8 (get-text 0 #f)))
       (send f put text))
     (define/public (alert . _)
       (error "TODO alert"))

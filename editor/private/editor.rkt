@@ -121,7 +121,8 @@
 ;;   whatever module exists in the registry under that name.)
 ;; resolved-module-path? symbol? boolean? -> identifier?
 (define-for-syntax (forge-identifier modpath sym [find-original? #t])
-  (parameterize ([current-namespace (make-base-namespace)])
+  (parameterize ([current-namespace (make-base-namespace)]
+                 [current-load-relative-directory (build-path (this-mod-dir) "..")])
     (when find-original?
       (namespace-require modpath))
     (define real-id (if find-original?
