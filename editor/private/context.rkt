@@ -33,16 +33,16 @@
   (class* canvas% (editor-context<$>)
     (init-field editor)
     (inherit min-height min-width refresh)
-    (match-define-values (width height _ _ _ _)
-      (send editor get-extent 0 0))
+    (match-define-values (width height)
+      (send editor get-extent))
     (super-new [min-width (exact-ceiling width)]
                [min-height (exact-ceiling height)]
                [stretchable-width #f]
                [stretchable-height #f]
                [paint-callback (λ (c dc)
                                  (send editor draw dc 0 0)
-                                 (match-define-values (width height _ _ _ _)
-                                   (send editor get-extent 0 0)) ;(send editor get-x) (send editor get-y)))
+                                 (match-define-values (width height)
+                                   (send editor get-extent)) ;(send editor get-x) (send editor get-y)))
                                  (min-width (exact-ceiling width))
                                  (min-height (exact-ceiling height)))])
     (send editor set-context this)
@@ -123,27 +123,27 @@
           (set-editor! (deserialize serial-sexp)))))
     (define/override (get-extent dc x y [w #f] [h #f] [d #f] [s #f] [ls #f] [rs #f])
       (init-editor)
-      (define-values (w* h* l* t* r* b*) (send editor get-extent x y))
+      (define-values (w* h*) (send editor get-extent))
       (define (wsb! x y) (when x (set-box! x y)))
       (wsb! w w*)
       (wsb! h h*)
-      (wsb! ls l*)
-      (wsb! s t*)
-      (wsb! rs r*)
-      (wsb! d b*))
+      (wsb! ls 0)
+      (wsb! s 0)
+      (wsb! rs 0)
+      (wsb! d 0))
     (define/override (draw dc x y left top right bottom dx dy draw-caret)
       (init-editor)
       (send editor draw dc x y))
     (define/override (on-char dc x y ex ey event)
       (init-editor)
-      (send editor get-extent x y) ;; TODO, remove this
+      (send editor get-extent) ;; TODO, remove this
       (send editor on-event event x y)
       (define admin (get-admin))
       (when admin
         (send admin resized this #t)))
     (define/override (on-event dc x y ex ey event)
       (init-editor)
-      (send editor get-extent x y) ;; TODO, remove this
+      (send editor get-extent) ;; TODO, remove this
       (send editor on-event event x y)
       (define admin (get-admin))
       (when admin

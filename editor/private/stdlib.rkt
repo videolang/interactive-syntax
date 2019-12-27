@@ -56,7 +56,7 @@
          (λ (this format default)
            (case format
              [(png-bytes)
-              (define-values (w* h* l t r b) (send this get-extent 0 0))
+              (define-values (w* h*) (send this get-extent))
               (define w (exact-ceiling (max w* 1)))
               (define h (exact-ceiling (max h* 1)))
               (define bit (make-object bitmap% w h))
@@ -66,13 +66,10 @@
               (get-output-bytes s)]
              [else default]))])
        partial-extent
-       (get-extent (->m real? real? (values real? real? real? real? real? real?)))
+       (get-extent (->m (values real? real?)))
        (resize (->m real? real? any/c))
        (draw (->m (is-a?/c dc<%>) real? real? void?))
        (get-count (->m integer?))
-       split
-       merge
-       (on-state-changed (->m void?))
        (on-event (->m (is-a?/c event%) real? real? any))
        (set-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>)) void?))
        (get-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>))))))
@@ -93,18 +90,10 @@
        (λ () (send dc translate (- x) (- y)))))
     (define/public (partial-extent x y len)
       (values 0 0))
-    (define/public (get-extent x y)
-      (values 0 0 0 0 0 0))
-    (define/public (resize w h)
-      #f)
+    (define/pubment (get-extent)
+      (inner (values 0 0) get-extent))
     (define/public (get-count)
       1)
-    (define/public (split count)
-      (error 'split "TODO"))
-    (define/public (merge . args)
-      (error 'merge "TODO"))
-    (define/public (on-state-changed)
-      (void))
     (define/pubment (on-event event x y)
       (define x* (inexact->exact (round x)))
       (define y* (inexact->exact (round y)))
@@ -123,6 +112,8 @@
     (define/public (set-context c)
       (log-editor-debug "Setting context to ~a" c)
       (set! context c))
+    (define/public (resize w h)
+      #f)
     (define/public (get-context)
       context))
 
@@ -133,23 +124,6 @@
       (define ctx (get-context))
       (and ctx
            (send ctx get-path))))
-
-  (define-editor scroller$ base$
-    (super-new)
-    (init [(ic content)])
-    (define-state content #f)
-    (define-state content-height 0)
-    (define-state content-width 0)
-    (define-state vertical-scrollbar-width 0)
-    (define-state horizontal-scrollbar-height 0)
-    (define/override (get-extent x y)
-      (values (+ content-width vertical-scrollbar-width)
-              (+ content-height horizontal-scrollbar-height)
-              0
-              0
-              vertical-scrollbar-width
-              horizontal-scrollbar-height))
-    (define-state child #f))
 
   (begin-for-editor
     (define callable<$>
@@ -201,45 +175,12 @@
       (interface ()
         (on-receive (->m (is-a?/c signaler<$>) any/c void?)))))
 
-  (define-editor tool-tip$ base$
-    (super-new))
-
-  (define-editor float$ base$
-    (super-new))
-
   (define-editor widget$ (get-path$$ base$)
     (super-new)
     (init [(internal-parent parent) #f]
           [(ip persistence) #f])
     (define persist ip)
     (define/public (get-persistence) persist)
-    (define-state min-width 0
-      #:init #t
-      #:getter #t
-      #:persistence (get-persistence))
-    (define-state min-height 0
-      #:init #t
-      #:getter #t
-      #:persistence (get-persistence))
-    (define content-extent-stale? #t)
-    (define-state content-width 0
-      #:persistence (get-persistence)
-      #:getter (λ ()
-                 (when content-extent-stale?
-                   (define-values (w h) (get-content-extent))
-                   (set! content-width w)
-                   (set! content-height h)
-                   (set! content-extent-stale? #f))
-                 content-width))
-    (define-state content-height 0
-      #:persistence (get-persistence)
-      #:getter (λ ()
-                 (when content-extent-stale?
-                   (define-values (w h) (get-content-extent))
-                   (set! content-width w)
-                   (set! content-height h)
-                   (set! content-extent-stale? #f))
-                 content-height))
     (define-state top-margin 1
       #:persistence (get-persistence))
     (define-state bottom-margin 1
@@ -254,8 +195,7 @@
       (set! left-margin l)
       (set! right-margin r)
       (set! top-margin t)
-      (set! bottom-margin b)
-      (resize (+ content-width l r) (+ content-height t b)))
+      (set! bottom-margin b))
     (define-state background '("Gainsboro" solid #f #f #f)
       #:persistence (get-persistence)
       #:getter (λ ()
@@ -296,51 +236,44 @@
     (define/override (get-count)
       count)
     (define/augment (draw dc)
+      (define-values (width height) (get-extent))
       (define old-pen (send dc get-pen))
       (define old-brush (send dc get-brush))
       (send dc set-pen
             (new pen%
                  [style 'transparent]))
       (send dc set-brush (send this get-background))
-      (send dc draw-rectangle 0 0
-            (+ content-width left-margin right-margin)
-            (+ content-height top-margin bottom-margin))
+      (send dc draw-rectangle 0 0 width height)
       (send dc set-pen old-pen)
       (send dc set-brush old-brush)
-      (inner (void) draw dc))
+      (dynamic-wind
+       (λ () (send dc translate left-margin top-margin))
+       (λ () (inner (void) draw dc))
+       (λ () (send dc translate (- left-margin) (- top-margin)))))
     (define/public (get-content-extent)
-      (if content-extent-stale?
-          (error 'widget$ "Known content extent stale")
-          (values content-width content-height)))
-    (define/public (resize-content w h)
-      (local-resize-content w h))
-    (define (local-resize-content w h)
-      (set! content-width (max min-width w))
-      (set! content-height (max min-height h))
-      (define c (send this get-context))
-      (when c
-        (send c resize content-width content-height))
-      (when parent
-        (send parent resized-child this)))
-    (define/override (get-extent x y)
-      (values (+ content-width left-margin right-margin)
-              (+ content-height top-margin bottom-margin)
-              left-margin top-margin right-margin bottom-margin))
+      (inner (values 0 0) get-extent))
+    (define/augment (get-extent)
+      (define-values (iw ih)
+        (inner (values 0 0) get-extent))
+      (values (+ iw left-margin right-margin)
+              (+ ih top-margin bottom-margin)))
     (define/override (resize w h)
-      (define c-w (- w left-margin right-margin))
-      (define c-h (- h top-margin bottom-margin))
-      (set! min-width c-w)
-      (set! min-height c-h)
-      (local-resize-content c-w c-h))
+      ;(define c (send this get-context))
+      ;(when c
+      ;  (send c resize content-width content-height))
+      ;(when parent
+      ;  (send parent resized-child this)))
+      #f)
     (define/public (get-parent)
       parent)
     (define/public (register-parent other)
       (set! parent other))
     (define/public (in-bounds? event)
+      (define-values (width height) (get-extent))
       (define mouse-x (send event get-x))
       (define mouse-y (send event get-y))
-      (and (<= 0 mouse-x content-width)
-           (<= 0 mouse-y content-height)))
+      (and (<= 0 mouse-x width)
+           (<= 0 mouse-y height)))
     (when internal-parent
       (send internal-parent add-child this)))
 
@@ -486,20 +419,18 @@
                                                 (cons (send event get-x)
                                                       (send event get-y)))))])]
                  [_ (void)]))]))
-    (define/override (get-extent x y)
-      (define-values (w h l t r b) (super get-extent x y))
-      (for/fold ([min-width (max min-width w)]
-                 [min-height (max min-height h)]
+    (define/augride (get-extent)
+      (for/fold ([min-width min-width]
+                 [min-height min-height]
                  #:result (values (+ min-width extra-width)
-                                  (+ min-height extra-height)
-                                  l t r b))
+                                  (+ min-height extra-height)))
                 ([(child pos) (in-dict children)])
         (define x (car pos))
         (define y (cdr pos))
-        (define-values (w h l t r b) (send child get-extent x y))
+        (define-values (w h) (send child get-extent))
         (values (max min-width (+ x w))
                 (max min-height (+ y h)))))
-    (define/augment (draw dc)
+    (define/augride (draw dc)
       (for ([(child pos) (in-dict children)])
         (send child draw dc (car pos) (cdr pos)))))
 
@@ -507,8 +438,8 @@
   ;; and horizontal-block$.
   (define-editor-mixin list-block$$
     #:interfaces (parent<$> stretchable<$>)
-    (inherit/super get-extent)
-    (inherit get-persistence)
+    (inherit get-persistence
+             get-extent)
     (init [(ixe x-extent)]
           [(iye y-extent)]
           [(ixd x-draw)]
@@ -569,7 +500,7 @@
     (define/public (in-children)
       (in-list editor-list))
     (define/public (resized-child child)
-      (match-define-values (_ w h _ _ _ _) (get-child-extents))
+      (match-define-values (_ w h) (get-child-extents))
       (send this resize w h)
       (send this set-count! (length editor-list)))
     (define/public (child-focus-changed child)
@@ -644,16 +575,13 @@
           (get-uniform-child-extents uniform-child-size?)
           (get-fixed-child-extents)))
     (define/private (get-fixed-child-extents #:stretchable? [stretchable? #f])
-      (define-values (sw sh l t r b) (super get-extent 0 0))
       (for/fold ([res '()]
                  [w 0]
                  [h 0]
-                 [x l]
-                 [y t]
+                 [x 0]
+                 [y 0]
                  #:result (values (reverse res)
-                                  (max sw (+ w l r))
-                                  (max sh (+ h t b))
-                                  l t r b))
+                                  w h))
                 ([i (in-list editor-list)])
         (cond
           [(and stretchable? (is-a? i stretchable<$>))
@@ -665,9 +593,8 @@
                    (x-draw x w*)
                    (y-draw y h*))]
           [else
-           (define-values (w* h* l t r b)
-             (send i get-extent x y))
-           (values (cons (list w* h* l t r b) res)
+           (define-values (w* h*) (send i get-extent))
+           (values (cons (list w* h*) res)
                    (x-extent w w*)
                    (y-extent h h*)
                    (x-draw x w*)
@@ -675,7 +602,7 @@
     ;; Finds the child with the biggest extent and makes ALL children
     ;; have that extent
     (define/private (get-uniform-child-extents [maybe-child-sizes #t])
-      (match-define-values (extents x y l t r b) (get-fixed-child-extents 0 0))
+      (match-define-values (extents x y) (get-fixed-child-extents))
       (define-values (max-width max-height)
         (if (list? maybe-child-sizes)
             (values (first maybe-child-sizes) (second maybe-child-sizes))
@@ -686,21 +613,21 @@
                       (max max-height (second i))))))
       (define-values (modified-extents new-width new-height)
         (for/fold ([exts '()]
-                   [mw (+ l r)]
-                   [mh (+ t b)]
+                   [mw 0]
+                   [mh 0]
                    #:result (values (reverse exts) mw mh))
                   ([i (in-list extents)])
           (values (cons (list max-width max-height (third i) (fourth i) (fifth i) (sixth i))
                         exts)
                   (x-extent max-width mw)
                   (y-extent max-height mh))))
-      (values modified-extents new-width new-height l t r b))
+      (values modified-extents new-width new-height))
     (define child-locs (make-hasheq))
     (define/augment (draw dc)
       (hash-clear! child-locs)
-      (match-define-values (extents _ _ l t r b) (get-child-extents))
-      (for/fold ([x l]
-                 [y t])
+      (match-define-values (extents _ _ ) (get-child-extents))
+      (for/fold ([x 0]
+                 [y 0])
                 ([i (in-list editor-list)]
                  [e (in-list extents)])
         (define w (first e))
@@ -734,12 +661,11 @@
                   [x-draw +]
                   [y-draw (λ (acc new) acc)])]
        [else (error "Not a valid style")])
-    (define/override (get-extent x y)
-      (super get-extent x y)
-      (define-values (extents w h l t r b)
+    (define/augride (get-extent)
+      (define-values (extents w h)
         (send this get-child-extents))
-      (log-editor-debug "Vertical Extent: ~a" (list x y extents w h))
-      (values w h l t r b)))
+      (log-editor-debug "Vertical Extent: ~a" (list extents w h))
+      (values w h)))
 
   (define-editor vertical-block$ vertical/horizontal-block$
     (super-new [style 'vertical]))
@@ -781,13 +707,14 @@
                  (set! text t)
                  (set! text-width w)
                  (set! text-height h)
-                 (send this resize-content text-width text-height)
                  (when signal?
                    (send this signal (new control-event% [event-type 'text-field]))))
       #:getter #t
       #:persistence (get-persistence))
     (super-new)
-    (define/augment (draw dc)
+    (define/augment (get-extent)
+      (values text-width text-height))
+    (define/augride (draw dc)
       (define-values (l t r b) (send this get-margin))
       (define old-font (send dc get-font))
       (send dc set-font (send this get-font))
@@ -800,32 +727,6 @@
     (super-new)
     (init [(internal-text text) ""])
     (send this set-text! internal-text))
-
-  (define-editor-mixin padding$$
-    (super-new)
-    (define-state left-padding 1)
-    (define-state top-padding 1)
-    (define-state right-padding 1)
-    (define-state bottom-padding 1)
-    (define-state content-width 0)
-    (define-state content-height 0)
-    (define/public (get-padding)
-      (values left-padding top-padding right-padding bottom-padding))
-    (define/override (get-content-extent)
-      (values content-width content-height))
-    (define/override (resize-content w h)
-      (and (super resize-content
-                  (+ w left-padding right-padding)
-                  (+ h top-padding bottom-padding))
-           (set! content-width w)
-           (set! content-height h)))
-    (define/public (set-padding l t r b)
-      (and (super resize-content (+ content-width l r) (+ content-height t b))
-           (set! left-padding l)
-           (set! top-padding t)
-           (set! right-padding r)
-           (set! bottom-padding b)
-           (super resize-content (+ content-width l r) (+ content-height t b)))))
 
   (define-editor-mixin focus$$
     #:interfaces (focus<$>)
@@ -848,9 +749,8 @@
            [_ (void)])])
       (inner (void) on-event event)))
 
-  (define-editor button$ (signaler$$ (focus$$ (padding$$ widget$)))
-    (inherit resize-content
-             has-focus?
+  (define-editor button$ (signaler$$ (focus$$ widget$))
+    (inherit has-focus?
              get-persistence)
     (super-new)
     (init [(il label) #f])
@@ -859,10 +759,7 @@
       #:persistence (get-persistence)
       #:getter #t
       #:setter (λ (l)
-                 (set! label l)
-                 (match-define-values (w h _ _ _ _)
-                   (send l get-extent 0 0))
-                 (resize-content w h)))
+                 (set! label l)))
     (define up-color "Silver")
     (define hover-color "DarkGray")
     (define down-color "DimGray")
@@ -896,11 +793,6 @@
                  (set! mouse-state 'up))])]
            [_ (void)])]))
     (define/augment (draw dc)
-      (define-values (pl pt pr pb) (send this get-padding))
-      (define-values (ml mt mr mb) (send this get-margin))
-      (define-values (cw ch) (send this get-content-extent))
-      (define mx ml)
-      (define my mt)
       (define old-pen (send dc get-pen))
       (define old-brush (send dc get-brush))
       (send dc set-pen
@@ -911,9 +803,8 @@
                                    ['up up-color]
                                    ['hover hover-color]
                                    ['down down-color]))]))
-      (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
       (if label
-          (send label draw dc (+ mx pl) (+ my pt))
+          (send label draw dc 0 0)
           (error 'button$ "Missing label"))
       (send dc set-pen old-pen)
       (send dc set-brush old-brush)
@@ -924,9 +815,8 @@
       [(eq? il #f) (void)]
       [else (set-label! il)]))
 
-  (define-editor toggle$ (signaler$$ (focus$$ (padding$$ widget$)))
-    (inherit resize-content
-             has-focus?
+  (define-editor toggle$ (signaler$$ (focus$$ widget$))
+    (inherit has-focus?
              get-persistence)
     (super-new)
     (define-state value #f
@@ -937,7 +827,6 @@
     (define-state up-color "Silver")
     (define-state focus-color "LightSkyBlue")
     (define-state down-color "DeepSkyBlue")
-    (resize-content 20 20)
     (define/augment (on-event event)
       (cond
         [(is-a? event mouse-event%)
@@ -1031,7 +920,7 @@
     (define (set-state! s)
       (set! state s)))
 
-  (define-editor field$ (focus$$ (text$$ (padding$$ widget$)))
+  (define-editor field$ (focus$$ (text$$ widget$))
     #:interfaces (stretchable<$>)
     (inherit get-extent
              get-text
@@ -1042,26 +931,22 @@
       #:init #t)
     (send this set-background (or background "white"))
     (define/public (get-max-extent x y)
-      (match-define-values (w h _ _ _ _)
-        (get-extent x y))
+      (match-define-values (w h) (get-extent))
       (values +inf.0 h))
     (define/public (get-min-extent x y)
-      (match-define-values (w h _ _ _ _)
-        (get-extent x y))
+      (match-define-values (w h) (get-extent))
       (values 0 h))
     (define-state caret 0
       #:persistence (get-persistence))
-    (define/augment (draw dc)
+    (define/override (draw dc)
+      (super draw dc)
       (when (send this has-focus?)
         (define t (get-text))
         (define car-str (substring t 0 caret))
         (match-define-values (cx cy _ _)
           (send text-size-dc get-text-extent car-str (send this get-font)))
         (match-define-values (w h) (send this get-content-extent))
-        (define-values (pl pt pr pb) (send this get-padding))
-        (define-values (ml mt mr mb) (send this get-margin))
-        (send dc draw-line (+ pr cx) pt (+ pr cx) h))
-      (inner (void) draw dc))
+        (send dc draw-line cx 0 cx h)))
     (define/public (draw-stretched dc x y w h)
       (draw dc x y))
     (define/augment (on-event event)
