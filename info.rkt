@@ -2,7 +2,7 @@
 
 (define collection 'multi)
 
-(define deps '(("base" "7.1")
+(define deps '(("base" "7.6")
                "draw-lib"
                "data-lib"
                "drracket-plugin-lib"
