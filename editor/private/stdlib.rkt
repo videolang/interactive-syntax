@@ -68,7 +68,7 @@
        partial-extent
        (get-extent (->m (values real? real?)))
        (resize (->m real? real? any/c))
-       (draw (->m (is-a?/c dc<%>) real? real? void?))
+       (draw (->m (is-a?/c dc<%>) real? real? any))
        (get-count (->m integer?))
        (on-event (->m (is-a?/c event%) real? real? any))
        (set-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>)) void?))
@@ -304,10 +304,7 @@
         ;; Returns #t if the current widget has focus, #f otherwise.
         (has-focus? (->m boolean?))
         ;; Manually sets the focus for the widget.
-        (set-focus (->m boolean? any))
-        ;; A more automatic way to set focus based on certain events.
-        ;; The widget is responsible for notifying the parent when it takes focus.
-        (on-event (->m (is-a?/c event%) real? real? any))))
+        (set-focus (->m boolean? any))))
 
     ;; A parent can be any type of widget that contains children.
     ;; Such as a list-block$$. This interface assumes that there is some
@@ -398,7 +395,7 @@
       (error "TODO"))
     (define/public (resized-child child)
       (error "TODO"))
-    (define/augment (on-event event x y)
+    (define/augment (on-event event)
       (cond [(is-a? event mouse-event%)
              (when (in-bounds? event)
                (match (send event get-event-type)
