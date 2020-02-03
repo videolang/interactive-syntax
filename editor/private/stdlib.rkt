@@ -789,7 +789,10 @@
                (unless in-button?
                  (set! mouse-state 'up))])]
            [_ (void)])]))
+    (define/augment (get-extent)
+      (send label get-extent))
     (define/augment (draw dc)
+      (define-values (w h) (get-extent))
       (define old-pen (send dc get-pen))
       (define old-brush (send dc get-brush))
       (send dc set-pen
@@ -800,11 +803,12 @@
                                    ['up up-color]
                                    ['hover hover-color]
                                    ['down down-color]))]))
+      (send dc draw-rounded-rectangle 0 0 w h)
+      (send dc set-pen old-pen)
+      (send dc set-brush old-brush)
       (if label
           (send label draw dc 0 0)
           (error 'button$ "Missing label"))
-      (send dc set-pen old-pen)
-      (send dc set-brush old-brush)
       (inner (void) draw dc))
     (cond
       [(string? il)
