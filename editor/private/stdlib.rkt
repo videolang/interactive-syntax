@@ -435,21 +435,19 @@
   ;; and horizontal-block$.
   (define-editor-mixin list-block$$
     #:interfaces (parent<$> stretchable<$>)
-    (inherit get-persistence
-             get-extent)
+    (inherit get-persistence)
     (init [(ixe x-extent)]
           [(iye y-extent)]
           [(ixd x-draw)]
           [(iyd y-draw)]
-          [(ucs uniform-child-size?) #f])
+          [(ixo x-offset)]
+          [(iyo y-offset)])
     (define x-extent ixe)
     (define y-extent iye)
     (define x-draw ixd)
     (define y-draw iyd)
-    (define-state uniform-child-size? ucs
-      #:persistence (get-persistence)
-      #:getter #t
-      #:setter #t)
+    (define x-offset ixo)
+    (define y-offset iyo)
     (define-state editor-list '()
       #:getter #t
       #:persistence (get-persistence))
@@ -567,72 +565,48 @@
       (error "min-extent TODO"))
     (define/public (get-max-extent x y)
       (error "max-extent TODO"))
+    (define/augride (get-extent)
+      (define-values (extents w h)
+        (send this get-child-extents))
+      (log-editor-debug "List Extent: ~a" (list extents w h))
+      (values w h))
     (define/public (get-child-extents)
-      (if uniform-child-size?
-          (get-uniform-child-extents uniform-child-size?)
-          (get-fixed-child-extents)))
+      (get-fixed-child-extents))
     (define/private (get-fixed-child-extents #:stretchable? [stretchable? #f])
       (for/fold ([res '()]
                  [w 0]
                  [h 0]
-                 [x 0]
-                 [y 0]
                  #:result (values (reverse res)
                                   w h))
                 ([i (in-list editor-list)])
         (cond
           [(and stretchable? (is-a? i stretchable<$>))
            (define-values (w* h*)
-             (send i get-max-extent x y))
+             (send i get-min-extent 0 0))
            (values (cons (list w* h*) res)
                    (x-extent w w*)
-                   (y-extent h h*)
-                   (x-draw x w*)
-                   (y-draw y h*))]
+                   (y-extent h h*))]
           [else
            (define-values (w* h*) (send i get-extent))
            (values (cons (list w* h*) res)
                    (x-extent w w*)
-                   (y-extent h h*)
-                   (x-draw x w*)
-                   (y-draw y h*))])))
-    ;; Finds the child with the biggest extent and makes ALL children
-    ;; have that extent
-    (define/private (get-uniform-child-extents [maybe-child-sizes #t])
-      (match-define-values (extents x y) (get-fixed-child-extents))
-      (define-values (max-width max-height)
-        (if (list? maybe-child-sizes)
-            (values (first maybe-child-sizes) (second maybe-child-sizes))
-            (for/fold ([max-width 0]
-                       [max-height 0])
-                      ([i (in-list extents)])
-              (values (max max-width (first i))
-                      (max max-height (second i))))))
-      (define-values (modified-extents new-width new-height)
-        (for/fold ([exts '()]
-                   [mw 0]
-                   [mh 0]
-                   #:result (values (reverse exts) mw mh))
-                  ([i (in-list extents)])
-          (values (cons (list max-width max-height (third i) (fourth i) (fifth i) (sixth i))
-                        exts)
-                  (x-extent max-width mw)
-                  (y-extent max-height mh))))
-      (values modified-extents new-width new-height))
+                   (y-extent h h*))])))
     (define child-locs (make-hasheq))
     (define/augment (draw dc)
       (hash-clear! child-locs)
-      (match-define-values (extents _ _ ) (get-child-extents))
+      (define-values (extents w h) (get-child-extents))
       (for/fold ([x 0]
                  [y 0])
                 ([i (in-list editor-list)]
                  [e (in-list extents)])
-        (define w (first e))
-        (define h (second e))
-        (hash-set! child-locs i (cons x y))
-        (send i draw dc x y)
-        (values (x-draw x w)
-                (y-draw y h)))
+        (define w* (first e))
+        (define h* (second e))
+        (define x* (x-offset x w* w))
+        (define y* (y-offset y h* h))
+        (hash-set! child-locs i (cons x* y*))
+        (send i draw dc x* y*)
+        (values (x-draw x w*)
+                (y-draw y h*)))
       (void))
     (define/public (draw-stretched dc x y w h)
       (send this draw dc x y))
@@ -644,31 +618,37 @@
                     (define loc (hash-ref child-locs i (cons 0 0)))
                     (send i on-event event (car loc) (cdr loc)))])))
 
-  (define-editor vertical/horizontal-block$ (list-block$$ widget$)
-    (init [style 'vertical])
-    (case style
-      [(vertical)
-       (super-new [x-extent max]
-                  [y-extent +]
-                  [x-draw (λ (acc new) acc)]
-                  [y-draw +])]
-      [(horizontal)
-       (super-new [x-extent +]
-                  [y-extent max]
-                  [x-draw +]
-                  [y-draw (λ (acc new) acc)])]
-       [else (error "Not a valid style")])
-    (define/augride (get-extent)
-      (define-values (extents w h)
-        (send this get-child-extents))
-      (log-editor-debug "Vertical Extent: ~a" (list extents w h))
-      (values w h)))
+  ;; A style is: 'left, 'right, 'center
+  (define-editor vertical-block$ (list-block$$ widget$)
+    (init [style 'left])
+    (super-new [x-extent max]
+               [y-extent +]
+               [x-draw (λ (acc new) acc)]
+               [y-draw +]
+               [x-offset (λ (x cw w)
+                           (case style
+                             [(left) x]
+                             [(center) (+ x (/ (- w cw) 2))]
+                             [(right) (+ x (- w cw))]
+                             [else x]))]
+               [y-offset (λ (y ch h)
+                           y)]))
 
-  (define-editor vertical-block$ vertical/horizontal-block$
-    (super-new [style 'vertical]))
-
-  (define-editor horizontal-block$ vertical/horizontal-block$
-    (super-new [style 'horizontal]))
+  ;; A style is: 'top, 'botton, 'center
+  (define-editor horizontal-block$ (list-block$$ widget$)
+    (init [style 'top])
+    (super-new [x-extent +]
+               [y-extent max]
+               [x-draw +]
+               [y-draw (λ (acc new) acc)]
+               [x-offset (λ (x cw w)
+                           x)]
+               [y-offset (λ (y ch h)
+                           (case style
+                             [(top) y]
+                             [(center) (+ y (/ (- h ch) 2))]
+                             [(bottom) (+ y (- h ch))]
+                             [else y]))]))
 
   (define-editor-mixin text$$
     #:mixins (signaler$$)
@@ -884,7 +864,7 @@
                      (loop (add1 count)
                            (cdr lst)))]))))
 
-  (define-editor radio$ vertical/horizontal-block$
+  (define-editor radio$ (list-block$$ widget$)
     (inherit get-persistence
              get-editor-list)
     (define-state selected #f

@@ -13,6 +13,6 @@
                "wxme-lib"))
 (define build-deps '("scribble-lib"
                      "racket-doc"))
-(define version "0.0.5")
+(define version "0.0.6")
 (define pkg-authors '(leif))
 (define pkg-desc "Interactive Syntax")
