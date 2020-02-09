@@ -620,13 +620,13 @@
 
   ;; A style is: 'left, 'right, 'center
   (define-editor vertical-block$ (list-block$$ widget$)
-    (init [style 'left])
+    (init [alignment 'left])
     (super-new [x-extent max]
                [y-extent +]
                [x-draw (λ (acc new) acc)]
                [y-draw +]
                [x-offset (λ (x cw w)
-                           (case style
+                           (case alignment
                              [(left) x]
                              [(center) (+ x (/ (- w cw) 2))]
                              [(right) (+ x (- w cw))]
@@ -636,7 +636,7 @@
 
   ;; A style is: 'top, 'botton, 'center
   (define-editor horizontal-block$ (list-block$$ widget$)
-    (init [style 'top])
+    (init [alignment 'top])
     (super-new [x-extent +]
                [y-extent max]
                [x-draw +]
@@ -644,12 +644,98 @@
                [x-offset (λ (x cw w)
                            x)]
                [y-offset (λ (y ch h)
-                           (case style
+                           (case alignment
                              [(top) y]
                              [(center) (+ y (/ (- h ch) 2))]
                              [(bottom) (+ y (- h ch))]
                              [else y]))]))
 
+  (define-editor grid-block$ widget$
+    #:interfaces (parent<$>)
+    (super-new)
+    (define children (make-hasheq))
+    (define grid (make-hasheq))
+    (define (find-by-pos x y)
+      (hash-ref grid (cons x y) #f))
+    (define/public (add-child child [x 0] [y 0] [width 1] [height 1])
+      (hash-set! children child (list x y width height))
+      (for ([x* (in-range x (+ x width))]
+            [y* (in-range y (+ y height))])
+        (hash-set! grid (cons x* y*) child)))
+    (define/public (remove-child [child* #f])
+      (define child (or child* (hash-iterate-key children (hash-iterate-first children))))
+      (define loc (hash-ref children child))
+      (hash-remove! children child)
+      (define x (first loc))
+      (define y (second loc))
+      (define w (third loc))
+      (define h (fourth loc))
+      (for ([x* (in-range x (+ x w))]
+            [y* (in-range y (+ y h))])
+        (hash-remove! grid (cons x* y*))))
+    (define/public (clear)
+      (set! children (make-hasheq))
+      (set! grid (make-hasheq)))
+    (define (get-child-extents)
+      (define row-extents (make-hash))
+      (define col-extents (make-hash))
+      (define size-w 0)
+      (define size-h 0)
+      (for ([(child size) children])
+        (define-values (child-w child-h) (send child get-extent))
+        (define x (first size))
+        (define y (second size))
+        (define w (third size))
+        (define h (fourth size))
+        (define cell-w (/ child-w w))
+        (define cell-h (/ child-h h))
+        (set! size-w (max size-w (+ x w)))
+        (set! size-h (max size-h (+ y h)))
+        (for ([x* (in-range x (+ x w))]
+              [y* (in-range y (+ y h))])
+          (hash-update! col-extents x* (λ (old)
+                                         (max old cell-w))
+                        cell-h)
+          (hash-update! row-extents y* (λ (old)
+                                         (max old cell-h))
+                        cell-w)))
+      (define-values (width col-pos)
+        (for/fold ([acc 0]
+                   [pos '()]
+                   #:result (values acc (reverse pos)))
+                  ([i (in-range size-w)])
+          (values
+           (+ acc (hash-ref col-extents i 0))
+           (cons acc pos))))
+      (define-values (height row-pos)
+        (for/fold ([acc 0]
+                   [pos '()]
+                   #:result (values acc (reverse pos)))
+                  ([i (in-range size-h)])
+          (values
+           (+ acc (hash-ref row-extents i 0))
+           (cons acc pos))))
+      (values width height row-pos col-pos))
+    (define/augride (get-extent)
+      (match-define-values (w h _ _) (get-child-extents))
+      (values w h))
+    (define/augride (draw dc)
+      (match-define-values (_ _ rows cols) (get-child-extents))
+      (for ([(child size) children])
+        (define x (first size))
+        (define y (second size))
+        (send child draw dc (list-ref cols x) (list-ref rows y))))
+    (define/public (resized-child . args)
+      (error "TODO"))
+    (define/public (set-child-focus . args)
+      (error "TODO"))
+    (define/public (child-focus-changed . args)
+      (error "TODO"))
+    (define/public (next-child-focus #:wrap [wrap #f] . args)
+      (error "TODO"))
+    (define/public (previous-child-focus #:wrap [wrap #f] . args)
+      (error "TODO")))
+  
   (define-editor-mixin text$$
     #:mixins (signaler$$)
     (inherit get-persistence)
