@@ -346,8 +346,12 @@
   (define-editor pasteboard$ widget$
     #:interfaces (parent<$>)
     (inherit in-bounds? get-persistence)
-    (define extra-width 100)
-    (define extra-height 100)
+    (define-state extra-width 100
+      #:persistence #f
+      #:init #t)
+    (define-state extra-height 100
+      #:persistence #f
+      #:init #t)
     (define-state min-height 0
       #:persistence #f
       #:init #t)
@@ -607,6 +611,7 @@
         (send i draw dc x* y*)
         (values (x-draw x w*)
                 (y-draw y h*)))
+      (inner (void) draw dc)
       (void))
     (define/public (draw-stretched dc x y w h)
       (send this draw dc x y))
@@ -655,6 +660,7 @@
     (super-new)
     (define children (make-hasheq))
     (define grid (make-hasheq))
+    (define child-locs (make-hasheq)) ;; (for events)
     (define (find-by-pos x y)
       (hash-ref grid (cons x y) #f))
     (define/public (add-child child [x 0] [y 0] [width 1] [height 1])
@@ -721,9 +727,11 @@
       (values w h))
     (define/augride (draw dc)
       (match-define-values (_ _ rows cols) (get-child-extents))
+      (set! child-locs (make-hasheq))
       (for ([(child size) children])
         (define x (first size))
         (define y (second size))
+        (hash-set! child-locs child (cons (list-ref cols x) (list-ref rows y)))
         (send child draw dc (list-ref cols x) (list-ref rows y))))
     (define/public (resized-child . args)
       (error "TODO"))
@@ -734,7 +742,10 @@
     (define/public (next-child-focus #:wrap [wrap #f] . args)
       (error "TODO"))
     (define/public (previous-child-focus #:wrap [wrap #f] . args)
-      (error "TODO")))
+      (error "TODO"))
+    (define/augment (on-event event)
+      (for ([(child loc) child-locs])
+        (send child on-event event (car loc) (cdr loc)))))
   
   (define-editor-mixin text$$
     #:mixins (signaler$$)
