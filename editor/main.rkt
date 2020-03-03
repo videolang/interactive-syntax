@@ -20,15 +20,17 @@
       (if (syntax? stx)
           (syntax-parse stx
             [(module name lang
-               (mod-beg (~optional (~seq #:headers (headers ...)) #:defaults ([(headers 1) '()]))
-                        body ...))
+               (~and mb
+                     (mod-beg (~optional (~seq #:headers (headers ...)) #:defaults ([(headers 1) '()]))
+                      body ...)))
              (outer-scope
               #`(module name lang
-                  (mod-beg
-                   headers ...
-                   #,(datum->syntax #f '(#%require (only editor/private/editor #%editor)))
-                   ;#,(outer-scope #'(#%require (only editor/base)))
-                   body ...)))])
+                  #,(datum->syntax #'mb
+                                   (append (list #'mod-beg)
+                                           (syntax->list #'(headers ...))
+                                           (list (datum->syntax #f '(#%require (only editor/private/editor #%editor))))
+                                           ;#,(outer-scope #'(#%require (only editor/base)))
+                                           (syntax->list #'(body ...))))))])
           (match stx
             [`(module ,name ,lang
                 (,mod-beg #:headers (,headers ...)

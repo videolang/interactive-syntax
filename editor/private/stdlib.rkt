@@ -880,7 +880,7 @@
                                    ['up up-color]
                                    ['hover hover-color]
                                    ['down down-color]))]))
-      (send dc draw-rounded-rectangle 0 0 w h)
+      (send dc draw-rounded-rectangle 0 0 (sub1 w) (sub1 h))
       (send dc set-pen old-pen)
       (send dc set-brush old-brush)
       (if label

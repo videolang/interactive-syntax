@@ -114,7 +114,7 @@
        base-lexer*]
       [else (λ (in offset mode)
               (apply values
-                     (append (call-with-values (λ () (base-lexer in)) list)
+                     (append (call-with-values (λ () (base-lexer* in)) list)
                              (list 0 #f))))]))
   (define-values (text type paren start end backup new-mode)
     (base-lexer in offset mode))
