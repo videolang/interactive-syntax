@@ -182,12 +182,16 @@
     (define persist ip)
     (define/public (get-persistence) persist)
     (define-state top-margin 1
+      #:init #t
       #:persistence (get-persistence))
     (define-state bottom-margin 1
+      #:init #t
       #:persistence (get-persistence))
     (define-state left-margin 1
+      #:init #t
       #:persistence (get-persistence))
     (define-state right-margin 1
+      #:init #t
       #:persistence (get-persistence))
     (define/public (get-margin)
       (values top-margin bottom-margin left-margin right-margin))
@@ -342,6 +346,17 @@
         (next-child-focus (->*m () (#:wrap boolean?) (or/c (is-a?/c editor<$>) #f)))
         ;; Like next-child-focus, but goes to the previous focusable child instead.
         (previous-child-focus (->*m () (#:wrap boolean?) (or/c (is-a?/c editor<$>) #f))))))
+
+  (define-editor blank$ widget$
+    (super-new)
+    (define-state width 0
+      #:persistence #f
+      #:init #t)
+    (define-state height 0
+      #:persistence #f
+      #:init #t)
+    (define/augride (get-extent)
+      (values width height)))
 
   (define-editor pasteboard$ widget$
     #:interfaces (parent<$>)
