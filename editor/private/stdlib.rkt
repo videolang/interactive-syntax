@@ -771,23 +771,27 @@
     (define-state text-width 0)
     (define-state text-height 0)
     (define-state font #f
-      #:getter (λ () (or font (current-system-font)))
+      #:getter (λ ()
+                 (or font (current-system-font)))
       #:setter #t
       #:init (λ (i)
                (or i
+                   (current-system-font)
                    (dynamic-require 'racket/gui/base 'normal-control-font)))
       #:deserialize (λ (lst)
-                      (apply make-object font% lst))
+                      (and lst
+                           (apply make-object font% lst)))
       #:serialize (λ (f)
-                    (list (send f get-size)
-                          (send f get-face)
-                          (send f get-family)
-                          (send f get-style)
-                          (send f get-weight)
-                          (send f get-underlined)
-                          (send f get-smoothing)
-                          (send f get-size-in-pixels)
-                          (send f get-hinting)))
+                    (and f
+                         (list (send f get-size)
+                               (send f get-face)
+                               (send f get-family)
+                               (send f get-style)
+                               (send f get-weight)
+                               (send f get-underlined)
+                               (send f get-smoothing)
+                               (send f get-size-in-pixels)
+                               (send f get-hinting))))
       #:persistence (get-persistence))
     (define-state scale? #f)
     (define-state text ""
