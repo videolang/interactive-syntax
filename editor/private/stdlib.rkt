@@ -74,6 +74,8 @@
        (set-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>)) void?))
        (get-context (->m any/c #;(or/c #f (is-a?/c editor-context<$>))))))
 
+    (define current-system-font (make-parameter #f))
+
     ;; DC used internally for measuring text size.
     (define text-size-dc
       (new bitmap-dc% [bitmap (make-object bitmap% 1 1)])))
@@ -769,7 +771,7 @@
     (define-state text-width 0)
     (define-state text-height 0)
     (define-state font #f
-      #:getter #t
+      #:getter (λ () (or font (current-system-font)))
       #:setter #t
       #:init (λ (i)
                (or i
