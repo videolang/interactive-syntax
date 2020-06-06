@@ -465,8 +465,7 @@
                (cond [(editor-deserialize-for-elaborator)
                       (send this elaborator-deserialize-method args)]
                      [else
-                      (send this deserialize-method args)
-                      (send this on-state-changed)])
+                      (send this deserialize-method args)])
                this)
              (λ ()
                (define pattern (new (get-name)))
@@ -475,8 +474,7 @@
                          (cond [(editor-deserialize-for-elaborator)
                                 (send pattern elaborator-copy-method other)]
                                [else
-                                (send pattern copy-method other)
-                                (send pattern on-state-changed)])))))))
+                                (send pattern copy-method other)])))))))
          ;; Main editor class
          (editor-submod
           (provide name)
