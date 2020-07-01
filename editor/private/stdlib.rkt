@@ -179,10 +179,13 @@
 
   (define-editor widget$ (get-path$$ base$)
     (super-new)
-    (init [(internal-parent parent) #f]
-          [(ip persistence) #f])
+    (init [(ip persistence) #f])
     (define persist ip)
     (define/public (get-persistence) persist)
+    (define-state parent #f
+      #:init #t
+      #:persistence (get-persistence)
+      #:getter #t)
     (define-state top-margin 1
       #:init #t
       #:persistence (get-persistence))
@@ -230,8 +233,6 @@
                      #f ;(send brush/color get-gradient)
                      (send brush/color get-transformation))]
               [else (list (color->quad brush/color) (or style 'solid) #f #f #f)])))
-    (define-state parent #f
-      #:persistence (get-persistence))
     (define-state count 1
       #:persistence (get-persistence)
       #:setter (λ (c)
@@ -270,8 +271,6 @@
       ;(when parent
       ;  (send parent resized-child this)))
       #f)
-    (define/public (get-parent)
-      parent)
     (define/public (register-parent other)
       (set! parent other))
     (define/public (in-bounds? event)
@@ -280,8 +279,8 @@
       (define mouse-y (send event get-y))
       (and (<= 0 mouse-x width)
            (<= 0 mouse-y height)))
-    (when internal-parent
-      (send internal-parent add-child this)))
+    (when parent
+      (send parent add-child this)))
 
   (begin-for-editor
     ;; An interface for widgets that can be resized, like a maximized window.
