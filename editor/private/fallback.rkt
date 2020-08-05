@@ -9,5 +9,5 @@
                                [current-editor-modpath-mode 'package])
   (require "stdlib.rkt")
   
-  (define-editor fallback$ base$
+  (define-interactive-syntax fallback$ base$
     (super-new)))

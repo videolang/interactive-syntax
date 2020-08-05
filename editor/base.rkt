@@ -7,7 +7,7 @@
 (splicing-syntax-parameterize ([current-editor-lang 'racket/base]
                                [current-editor-base "private/editor.rkt"]
                                [current-editor-modpath-mode 'package])
-  (begin-for-editor) ; <- because require happens too late...
+  (begin-for-interactive-syntax) ; <- because require happens too late...
   (require
     "private/stdlib.rkt"
     (for-editor "private/lang.rkt"
@@ -17,13 +17,13 @@
   (provide (~all-from-out "private/stdlib.rkt")
            (for-editor (~all-from-out (from-editor "private/stdlib.rkt"))
                        define-state
-                       define-elaborate)
+                       define-elaborator)
            define-state
-           define-elaborate
-           define-editor
-           define-editor-mixin
-           begin-for-editor
-           define-for-editor
+           define-elaborator
+           define-interactive-syntax
+           define-interactive-syntax-mixin
+           begin-for-interactive-syntax
+           define-for-interactive-syntax
            for-editor
            from-editor
            (rename-out [~require require]

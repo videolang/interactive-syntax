@@ -8,7 +8,7 @@
 (splicing-syntax-parameterize ([current-editor-lang "../lang.rkt"]
                                [current-editor-base '(submod "../base.rkt" editor)]
                                [current-editor-modpath-mode 'package])
-  (begin-for-editor) ; <--- TODO...WHY!!!
+  (begin-for-interactive-syntax) ; <--- TODO...WHY!!!
   (require syntax/location
            "context.rkt"
            syntax/parse
@@ -26,7 +26,7 @@
                        (prefix-in gui: racket/gui/base)
                        racket/async-channel))
 
-  (define-editor picker$ dialog$
+  (define-interactive-syntax picker$ dialog$
     (inherit get-frame
              set-result!
              show)
@@ -57,7 +57,7 @@
     (define mod-name (new field$ [parent mod-row]))
     (define editor-name (new field$ [parent editor-row])))
 
-  (begin-for-editor
+  (begin-for-interactive-syntax
     (provide get-module)
     (define (get-module [parent #f])
       (define f (new gui:dialog% [parent parent]

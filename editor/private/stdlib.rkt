@@ -48,7 +48,7 @@
            (for-editor (all-defined-out)
                        (all-from-out "event.rkt")))
 
-  (begin-for-editor
+  (begin-for-interactive-syntax
     (define editor<$>
       (interface*
        ()
@@ -119,7 +119,7 @@
     (define/public (get-context)
       context))
 
-  (define-editor-mixin get-path$$
+  (define-interactive-syntax-mixin get-path$$
     (inherit get-context)
     (super-new)
     (define/public (get-path)
@@ -127,7 +127,7 @@
       (and ctx
            (send ctx get-path))))
 
-  (begin-for-editor
+  (begin-for-interactive-syntax
     (define callable<$>
       (interface* ()
                   ([prop:procedure
@@ -135,7 +135,7 @@
                       (send/apply this apply args))])
                   apply)))
   
-  (define-editor-mixin signaler$$
+  (define-interactive-syntax-mixin signaler$$
     #:interfaces (signaler<$>)
     (inherit get-persistence)
     (init [(ir receiver) '()])
@@ -167,7 +167,7 @@
        (for ([i (in-list ir)])
          (register-receiver i))]))
 
-  (begin-for-editor
+  (begin-for-interactive-syntax
     (define signaler<$>
       (interface ()
         [signal (->m any/c void?)]
@@ -177,7 +177,7 @@
       (interface ()
         (on-receive (->m (is-a?/c signaler<$>) any/c void?)))))
 
-  (define-editor widget$ (get-path$$ base$)
+  (define-interactive-syntax widget$ (get-path$$ base$)
     (super-new)
     (init [(ip persistence) #f])
     (define persist ip)
@@ -282,7 +282,7 @@
     (when parent
       (send parent add-child this)))
 
-  (begin-for-editor
+  (begin-for-interactive-syntax
     ;; An interface for widgets that can be resized, like a maximized window.
     (define stretchable<$>
       (interface ()
@@ -348,7 +348,7 @@
         ;; Like next-child-focus, but goes to the previous focusable child instead.
         (previous-child-focus (->*m () (#:wrap boolean?) (or/c (is-a?/c editor<$>) #f))))))
 
-  (define-editor blank$ widget$
+  (define-interactive-syntax blank$ widget$
     (super-new)
     (define-state width 0
       #:persistence #f
@@ -359,7 +359,7 @@
     (define/augride (get-extent)
       (values width height)))
 
-  (define-editor pasteboard$ widget$
+  (define-interactive-syntax pasteboard$ widget$
     #:interfaces (parent<$>)
     (inherit in-bounds? get-persistence)
     (define-state extra-width 100
@@ -453,7 +453,7 @@
 
   ;; Generic list collection, used by other editors such as vertical-block$
   ;; and horizontal-block$.
-  (define-editor-mixin list-block$$
+  (define-interactive-syntax-mixin list-block$$
     #:interfaces (parent<$> stretchable<$>)
     (inherit get-persistence)
     (init [(ixe x-extent)]
@@ -640,7 +640,7 @@
                     (send i on-event event (car loc) (cdr loc)))])))
 
   ;; A style is: 'left, 'right, 'center
-  (define-editor vertical-block$ (list-block$$ widget$)
+  (define-interactive-syntax vertical-block$ (list-block$$ widget$)
     (init [alignment 'left])
     (super-new [x-extent max]
                [y-extent +]
@@ -656,7 +656,7 @@
                            y)]))
 
   ;; A style is: 'top, 'botton, 'center
-  (define-editor horizontal-block$ (list-block$$ widget$)
+  (define-interactive-syntax horizontal-block$ (list-block$$ widget$)
     (init [alignment 'top])
     (super-new [x-extent +]
                [y-extent max]
@@ -671,7 +671,7 @@
                              [(bottom) (+ y (- h ch))]
                              [else y]))]))
 
-  (define-editor grid-block$ widget$
+  (define-interactive-syntax grid-block$ widget$
     #:interfaces (parent<$>)
     (super-new)
     (define children (make-hasheq))
@@ -763,7 +763,7 @@
       (for ([(child loc) child-locs])
         (send child on-event event (car loc) (cdr loc)))))
   
-  (define-editor-mixin text$$
+  (define-interactive-syntax-mixin text$$
     #:mixins (signaler$$)
     (inherit get-persistence)
     (init [(internal-text text) ""])
@@ -818,12 +818,12 @@
     (send this set-background "white" 'transparent)
     (set-text! internal-text))
 
-  (define-editor label$ (text$$ widget$)
+  (define-interactive-syntax label$ (text$$ widget$)
     (super-new)
     (init [(internal-text text) ""])
     (send this set-text! internal-text))
 
-  (define-editor-mixin focus$$
+  (define-interactive-syntax-mixin focus$$
     #:interfaces (focus<$>)
     (define-state focus? #f)
     (define mouse-state 'up)
@@ -844,7 +844,7 @@
            [_ (void)])])
       (inner (void) on-event event)))
 
-  (define-editor button$ (signaler$$ (focus$$ widget$))
+  (define-interactive-syntax button$ (signaler$$ (focus$$ widget$))
     (inherit has-focus?
              get-persistence)
     (super-new)
@@ -914,7 +914,7 @@
       [(eq? il #f) (void)]
       [else (set-label! il)]))
 
-  (define-editor toggle$ (signaler$$ (focus$$ widget$))
+  (define-interactive-syntax toggle$ (signaler$$ (focus$$ widget$))
     (inherit has-focus?
              get-persistence)
     (super-new)
@@ -965,7 +965,7 @@
       (inner (void) draw dc)))
 
   ;; Will be lifted into racket/list
-  (begin-for-editor
+  (begin-for-interactive-syntax
     (define (remove-index ls index)
       (unless (list? ls)
         (raise-argument-error 'remove-index "list?" 0 ls index))
@@ -982,7 +982,7 @@
                      (loop (add1 count)
                            (cdr lst)))]))))
 
-  (define-editor radio$ (list-block$$ widget$)
+  (define-interactive-syntax radio$ (list-block$$ widget$)
     (inherit get-persistence
              get-editor-list)
     (define-state selected #f
@@ -1004,7 +1004,7 @@
         (set! children (remove-index children index))
         (super remove-child option))))
 
-  (define-editor-mixin pickable$$
+  (define-interactive-syntax-mixin pickable$$
     (super-new)
     (init-field [(in normal) (void)]
                 [(ih hover) (void)]
@@ -1019,7 +1019,7 @@
     (define (set-state! s)
       (set! state s)))
 
-  (define-editor field$ (focus$$ (text$$ widget$))
+  (define-interactive-syntax field$ (focus$$ (text$$ widget$))
     #:interfaces (stretchable<$>)
     (inherit get-extent
              get-text
@@ -1088,7 +1088,7 @@
       (when t
         (set! caret (string-length t)))))
 
-  (define-editor window$ vertical-block$
+  (define-interactive-syntax window$ vertical-block$
     (inherit get-context)
     (super-new)
     (define-state frame #f
@@ -1107,7 +1107,7 @@
           [else
            (send frame show #f)]))))
 
-  (define-editor dialog$ window$
+  (define-interactive-syntax dialog$ window$
     (inherit set-frame! get-frame)
     (init [title "Dialog"])
     (super-new)
@@ -1121,7 +1121,7 @@
     (define/public (set-result! new)
       (set! result new)))
 
-  (begin-for-editor
+  (begin-for-interactive-syntax
     (define option-bundle$
       (class object%
         (super-new)
@@ -1144,7 +1144,7 @@
             (finalize-options))
           options))))
 
-  (define-editor labeled-option$ horizontal-block$
+  (define-interactive-syntax labeled-option$ horizontal-block$
     (super-new)
     (init [option values])
     (define/public (get-option)

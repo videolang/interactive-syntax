@@ -74,7 +74,7 @@
                                  #:scopes [scp #f]
                                  #:required? [req? #t])
     (add-syntax-to-submod! stx the-submod-data
-                           #'define-editor-submodule
+                           #'define-interactive-syntax-submodule
                            #:base-submod (syntax-parameter-value #'current-editor-base)
                            #:lang-submod (syntax-parameter-value #'current-editor-lang)
                            #:scopes scp
@@ -115,7 +115,7 @@
 (define-for-syntax (wrap-scope scopes stx)
   (datum->syntax scopes (syntax-e stx)))
 
-(define-syntax-parser define-editor-submodule
+(define-syntax-parser define-interactive-syntax-submodule
   [(_ base lang)
    (define base-scope
      (editor-syntax-introduce (syntax-local-introduce (datum->syntax #f #f))))
@@ -294,7 +294,7 @@
 
 (define-syntax from-editor (from-editor-struct))
 
-(define-syntax (begin-for-editor stx)
+(define-syntax (begin-for-interactive-syntax stx)
   (syntax-parse stx
     [(_ code ...)
      #:with (marked-code ...) (editor/user-syntax-introduce #'(code ...))
@@ -302,14 +302,14 @@
        (editor-submod
         marked-code ...))]))
 
-(define-syntax (define-for-editor stx)
+(define-syntax (define-for-interactive-syntax stx)
   (syntax-parse stx
     [(_ name:id body)
      (syntax/loc stx
-       (begin-for-editor
+       (begin-for-interactive-syntax
          (define name body)))]
     [(_ name:function-header body)
      (syntax/loc stx
-       (begin-for-editor
+       (begin-for-interactive-syntax
          (define name body)))]))
 

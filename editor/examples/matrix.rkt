@@ -11,7 +11,7 @@
                      racket/match
                      data/gvector))
 
-(define-editor matrix-state$ base$
+(define-interactive-syntax matrix-state$ base$
   #:interfaces (receiver<$>)
   (super-new)
   (define-state width 0
@@ -44,7 +44,7 @@
                     (send sender get-col)
                     (string->number (send sender get-text))))])))
 
-(define-editor cell$ field$
+(define-interactive-syntax cell$ field$
   (init [(ir row) 0]
         [(ic col) 0])
   (define-state row ir
@@ -55,7 +55,7 @@
     #:persistence #f)
   (super-new))
 
-(define-editor matrix-body$ vertical-block$
+(define-interactive-syntax matrix-body$ vertical-block$
   (inherit count
            remove-child
            in-children
@@ -117,12 +117,12 @@
                 [callback (send this get-parent)]))]))
     (resize-cells)))
 
-(define-editor matrix$ (signaler$$ vertical-block$)
+(define-interactive-syntax matrix$ (signaler$$ vertical-block$)
   #:interfaces (receiver<$>)
   (super-new)
   (define-state state (new matrix-state$)
     #:getter #t)
-  (define-elaborate this
+  (define-elaborator this
     #'(let ()
         (define state (send this get-state))
         (vector->matrix (send state get-height)
@@ -168,7 +168,7 @@
   (define the-matrix (new matrix-body$ [parent this]
                           [uniform-child-size? #t])))
 
-(begin-for-editor
+(begin-for-interactive-syntax
   (module+ test
     (require editor/test)
     (test-window (new matrix$))))

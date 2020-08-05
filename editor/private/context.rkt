@@ -6,6 +6,7 @@
 (require "lang.rkt"
          "editor.rkt"
          "read-editor.rkt"
+         racket/pretty
          (prefix-in base: racket/base)
          racket/contract/base
          racket/class
@@ -184,8 +185,33 @@
     (define/override (get-text offset num [flattened? #f])
       (init-editor)
       (define-values (binding serial) (serialize-editor))
+      (define f (maybe-get-filename))
+      #|
+      (writeln "start")
+      (writeln serial)
+      (define des-text
+        (parameterize ([editor-deserialize-for-text #t]
+                       [current-load-relative-directory (or f (current-load-relative-directory))])
+          (writeln (editor-deserialize-for-text))
+          (deserialize serial)))
+      (writeln des-text)
+      (define clean-des-text
+        (cons (vector-ref des-text 0)
+              (let loop ([d (vector-ref des-text 1)])
+                (define sup (vector-ref d 0))
+                (list*
+                 (vector-ref d 0)
+                 (vector-ref d 2)
+                 (if sup
+                     (loop sup)
+                     '())))))
+      (pretty-write clean-des-text)
+      (writeln "end")
+|#
       ;; Disregarding flattened? ...
-      (format "#editor~s~s" binding serial))
+      (format "#editor~a~a"
+              (pretty-format binding #:mode 'write)
+              (pretty-format serial #:mode 'write)))
     (define/private (maybe-get-filename)
       (define maybe-admin (get-admin))
       (define maybe-filename

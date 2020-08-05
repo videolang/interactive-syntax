@@ -12,6 +12,7 @@
          racket/runtime-path
          racket/match
          racket/stxparam
+         racket/pretty
          (for-syntax racket/base
                      racket/dict
                      racket/class
@@ -47,6 +48,9 @@
 (define editor-deserialize-for-elaborator
   (make-parameter #f))
 
+(define editor-deserialize-for-text
+  (make-parameter #f))
+
 (module m->r racket/base
   (provide (all-defined-out))
   (require racket/path
@@ -65,7 +69,7 @@
        (module-path-index-join "here.rkt" #f)))))
 (require 'm->r (for-syntax 'm->r))
 
-;; Placed in a sub module because the define-editor
+;; Placed in a sub module because the define-interactive-syntax
 ;;   template uses these bindings in a begin-for-syntax
 ;;   block and the deserializer-submod block.
 (module elaborator-keys racket/base
@@ -254,13 +258,13 @@
                   this-editor
                   [body 1]
                   struct)
-    #:literals (define-elaborate)
-    (pattern (define-elaborate data
+    #:literals (define-elaborator)
+    (pattern (define-elaborator data
                (~optional (~seq #:this-editor this-editor))
                body ...+)
              #:attr struct #f
              #:attr type 'simple)
-    (pattern (define-elaborate
+    (pattern (define-elaborator
                struct)
              #:attr data #f
              #:attr this-editor #f
@@ -296,15 +300,15 @@
              #:attr elaborator #'options.elaborator
              #:attr elaborator-default #'options.elaborator-default)))
 
-(define-syntax-parameter define-elaborate
+(define-syntax-parameter define-elaborator
   (syntax-parser
     [de:defelaborate
-     (raise-syntax-error 'define-elaborate "Use outside of define-editor is an error" this-syntax)]))
+     (raise-syntax-error 'define-elaborator "Use outside of define-interactive-syntax is an error" this-syntax)]))
 
 (define-syntax-parameter define-state
   (syntax-parser
     [x:defstate
-     (raise-syntax-error 'define-state "Use outside of define-editor is an error" this-syntax)]))
+     (raise-syntax-error 'define-state "Use outside of define-interactive-syntax is an error" this-syntax)]))
 
 ;; We don't want to get editor classes when
 ;; deserializing new editors.
@@ -315,7 +319,7 @@
 ;; 1. A phase 1 elaboration
 ;; 2. A submodule with interaction code
 ;; 3. A deserializer submodule
-(define-syntax (~define-editor stx)
+(define-syntax (~define-interactive-syntax stx)
   (syntax-parse stx
     [(_ orig-stx name:id supclass (interfaces ...)
         (~alt (~optional (~seq #:base? b?) #:defaults ([b? #'#f]))
@@ -461,20 +465,29 @@
           (define name-deserialize
             (make-deserialize-info
              (λ (version args)
-               (define this (new (get-name)))
-               (cond [(editor-deserialize-for-elaborator)
-                      (send this elaborator-deserialize-method args)]
+               (cond [(editor-deserialize-for-text)
+                      (vector version args)]
                      [else
-                      (send this deserialize-method args)])
-               this)
+                      (define this (new (get-name)))
+                      (cond [(editor-deserialize-for-elaborator)
+                             (send this elaborator-deserialize-method args)]
+                            [else
+                             (send this deserialize-method args)])
+                      this]))
              (λ ()
-               (define pattern (new (get-name)))
-               (values pattern
-                       (λ (other)
-                         (cond [(editor-deserialize-for-elaborator)
-                                (send pattern elaborator-copy-method other)]
-                               [else
-                                (send pattern copy-method other)])))))))
+               (cond [(editor-deserialize-for-text)
+                      (define vec (make-vector #f))
+                      (values vec
+                              (λ (other)
+                                (vector-set! vec 0 other)))]
+                     [else
+                      (define pattern (new (get-name)))
+                      (values pattern
+                              (λ (other)
+                                (cond [(editor-deserialize-for-elaborator)
+                                       (send pattern elaborator-copy-method other)]
+                                      [else
+                                       (send pattern copy-method other)])))])))))
          ;; Main editor class
          (editor-submod
           (provide name)
@@ -502,7 +515,7 @@
                             (define-getter st.marked-name st.getter-name st.getter))
                         #,(syntax/loc #'st
                             (define-setter st.marked-name st.setter-name st.setter)))])]
-               [define-elaborate
+               [define-elaborator
                  (syntax-parser
                    [de:defelaborate
                     #'(begin)])])
@@ -521,9 +534,11 @@
                   ((interface* () ([prop:serializable
                                     (make-serialize-info
                                      (λ (this)
-                                       (vector
-                                        EDITOR-SERIALIZE-VERSION
-                                        (send this serialize-method)))
+                                       (define ret
+                                         (vector
+                                          EDITOR-SERIALIZE-VERSION
+                                          (send this serialize-method)))
+                                       ret)
                                      deserialize-binding
                                      #t
                                      (or (current-load-relative-directory) (current-directory)))]
@@ -645,19 +660,19 @@
 (define-syntax (define-base-editor* stx)
   (syntax-parse stx
     [(_ name:id super (interfaces ...) body ...)
-     #`(~define-editor #,stx name super (interfaces ...) #:base? #t body ...)]))
+     #`(~define-interactive-syntax #,stx name super (interfaces ...) #:base? #t body ...)]))
 
-(define-syntax (define-editor stx)
+(define-syntax (define-interactive-syntax stx)
   (syntax-parse stx
     [(_ name:id super
         (~or (~optional (~seq #:interfaces (interfaces ...)) #:defaults ([(interfaces 1) '()])))
         ...
         body ...)
-     #`(~define-editor #,stx name super (interfaces ...) body ...)]))
+     #`(~define-interactive-syntax #,stx name super (interfaces ...) body ...)]))
 
 ;; Mixin-editors are not at module level, and thus are not
-;; implicetly provided by the ~define-editor helper macro.
-(define-syntax (define-editor-mixin stx)
+;; implicetly provided by the ~define-interactive-syntax helper macro.
+(define-syntax (define-interactive-syntax-mixin stx)
   (syntax-parse stx
     [(_ name:id
         (~or (~optional (~seq #:interfaces (interfaces ...)) #:defaults ([(interfaces 1) '()]))
@@ -672,7 +687,7 @@
              (define b (continuation-mark-set-first #f editor-mixin-list-key))
              (when (and b (box? b))
                (set-box! b (cons #'name (unbox b))))))
-         (~define-editor #,stx
+         (~define-interactive-syntax #,stx
                          name
                          (compose #,@(reverse (attribute marked-mixins)))
                          (interfaces ...)

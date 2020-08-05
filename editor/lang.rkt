@@ -9,7 +9,7 @@
 (splicing-syntax-parameterize ([current-editor-lang "private/editor.rkt"]
                                [current-editor-base "base.rkt"]
                                [current-editor-modpath-mode 'package])
-  (begin-for-editor) ; <- because require happens too late...
+  (begin-for-interactive-syntax) ; <- because require happens too late...
   (require "base.rkt"
            racket/class
            (for-syntax racket/base
