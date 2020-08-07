@@ -421,13 +421,23 @@
                (match (send event get-event-type)
                  ;; Set focus or move child
                  ['left-down
-                  ;; XXX: in-bounds? api currently broken.
+                  (define old-x (send event get-x))
+                  (define old-y (send event get-y))
                   (define maybe-new-focus
                     (for/fold ([focus #f])
                               ([(child pos) (in-dict children)])
-                      (or (and (send child in-bounds? event)
-                               child)
-                          focus)))
+                      ;(printf "~a~a~a~a~n" child pos old-x old-y)
+                      (dynamic-wind
+                       (λ ()
+                         (send event set-x (- old-x (car pos)))
+                         (send event set-y (- old-y (cdr pos))))
+                       (λ ()
+                         (or (and (send child in-bounds? event)
+                                  child)
+                             focus))
+                       (λ ()
+                         (send event set-x old-x)
+                         (send event set-y old-y)))))
                   (cond
                     [maybe-new-focus (set! focus maybe-new-focus)]
                     [else
