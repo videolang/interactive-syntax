@@ -82,8 +82,8 @@
           (with-handlers ([exn:fail?
                            (λ (e)
                              (log-warning "~a" e)
-                             (define frame (send (send text get-tab) get-frame))
-                             (send frame show-editor-error-panel (exn-message e)))])
+                             ;(define frame (send (send text get-tab) get-frame))
+                             #;(send frame show-editor-error-panel (exn-message e)))])
             (define-values (mod-stx mod-name)
               (let ([stx (try-read-editor)])
                 (values stx
