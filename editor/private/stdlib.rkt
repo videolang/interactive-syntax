@@ -953,11 +953,7 @@
             (set! mouse-state 'up)]
            [_ (void)])]))
     (define/augment (draw dc)
-      (define-values (pl pt pr pb) (send this get-padding))
-      (define-values (ml mt mr mb) (send this get-margin))
-      (define-values (cw ch) (send this get-content-extent))
-      (define mx ml)
-      (define my mt)
+      (define-values (cw ch) (send this get-extent))
       (define old-pen (send dc get-pen))
       (define old-brush (send dc get-brush))
       (send dc set-pen
@@ -968,7 +964,7 @@
                                    ;[(has-focus?) focus-color]
                                    [value down-color]
                                    [else up-color]))]))
-      (send dc draw-rectangle mx my (+ cw pl pr) (+ ch pt pb))
+      (send dc draw-rectangle 0 0 cw ch)
       ;(send label draw dc (+ mx pl) (+ my pt))
       (send dc set-pen old-pen)
       (send dc set-brush old-brush)
