@@ -166,7 +166,7 @@
                 elaborator-name
                 #f)
                (forge-identifier elaborator-binding elaborator-name)))
-         (define/syntax-parse that-syntax (syntax-local-introduce #'#,this-syntax))
+         (define/syntax-parse that-syntax (syntax-local-introduce #`#,this-syntax))
          ;(pretty-write (identifier-binding #'elaborator))
          ;(pretty-write (syntax-debug-info #'elaborator))
          #'(elaborator body that-syntax))]))
