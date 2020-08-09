@@ -388,7 +388,7 @@
     (define/public (remove-child [child #f])
       (define elem
         (or child (let ([k (dict-iterate-first children)])
-                    (and k (dict-iterate-key k)))))
+                    (and k (dict-iterate-key children k)))))
       (when elem
         (set! children (dict-remove children elem))
         (when (equal? focus elem)
