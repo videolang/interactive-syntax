@@ -8,6 +8,7 @@
          syntax/location
          racket/serialize
          racket/dict
+         syntax/parse
          syntax/parse/define
          racket/runtime-path
          racket/match
@@ -268,7 +269,7 @@
                struct)
              #:attr data #f
              #:attr this-editor #f
-             #:attr (body 1) '()
+             #:attr (body 1) (list #'#'#f)
              #:attr type 'struct))
   (define-splicing-syntax-class defstate-options
     (pattern (~seq
@@ -281,6 +282,8 @@
                     (~optional (~seq #:elaborator elaborator) #:defaults ([elaborator #'#f]))
                     (~optional (~seq #:elaborator-default elaborator-default)
                                #:defaults ([elaborator-default #'#f]))
+                    (~optional (~seq #:elaborator-deserialize elaborator-deserialize)
+                               #:defaults ([elaborator-deserialize #'#f]))
                     (~once default))
               ...)))
   (define-syntax-class defstate
@@ -298,7 +301,8 @@
              #:attr serialize #'options.serialize
              #:attr deserialize #'options.deserialize
              #:attr elaborator #'options.elaborator
-             #:attr elaborator-default #'options.elaborator-default)))
+             #:attr elaborator-default #'options.elaborator-default
+             #:attr elaborator-deserialize #'options.elaborator-deserialize)))
 
 (define-syntax-parameter define-elaborator
   (syntax-parser
@@ -642,10 +646,14 @@
                elaborator.body ...])])
          (define-syntax elaborator-name
            #,(case (attribute elaborator.type)
-               [(struct) #'elaborator.struct]
+               [(struct)
+                #'elaborator.struct]
                [(simple)
                 #`(elaborator-transformer #'elaborator-inside elaborator.this-editor)])))]))
 
+
+;; When `use-elaborate-this? is true, it corresponds to `#:this-editor _id`, and _id gets bound
+;;   to the editor object at phase 0. Otherwise no run-time deserialization is needed.
 (define-for-syntax (elaborator-transformer inside use-elaborator-this?)
   (syntax-parser
     [(_ data orig)
@@ -693,3 +701,18 @@
                          (interfaces ...)
                          #:mixin $
                          body ...))]))
+
+
+;; Helper macro for struct-style macros in define-elaborator
+;; Auto deserializes the editor
+(define-syntax-parser elaborator-parser
+  [(_ data body ...+)
+   #'(syntax-parser
+       [(_ data-stx orig)
+        (syntax-parse #'orig
+          [_
+           #:do [(define data
+                   (parameterize ([editor-deserialize-for-elaborator #t]
+                                  [current-load-relative-directory (this-mod-dir)])
+                     (deserialize (syntax->datum #'data-stx))))]
+           body ...])])])

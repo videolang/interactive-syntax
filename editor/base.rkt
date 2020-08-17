@@ -22,6 +22,7 @@
            define-elaborator
            define-interactive-syntax
            define-interactive-syntax-mixin
+           elaborator-parser
            begin-for-interactive-syntax
            define-for-interactive-syntax
            for-editor
