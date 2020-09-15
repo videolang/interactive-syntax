@@ -351,9 +351,13 @@
   (define-interactive-syntax blank$ widget$
     (super-new)
     (define-state width 0
+      #:getter #t
+      #:setter #t
       #:persistence #f
       #:init #t)
     (define-state height 0
+      #:getter #t
+      #:setter #t
       #:persistence #f
       #:init #t)
     (define/augride (get-extent)

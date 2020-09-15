@@ -33,29 +33,53 @@
     (super-new)
     (new label$ [parent this]
          [text "Select Editor"])
-
-    (define mod-row (new horizontal-block$ [parent this]))
-    (define editor-row (new horizontal-block$ [parent this]))
+    
+    (new blank$ [parent this]
+         [height 3])
+    (define items-row (new horizontal-block$ [parent this]))
+    (define label-col (new vertical-block$ [parent items-row]))
+    (define field-col (new vertical-block$ [parent items-row]))
+    (new blank$ [parent this]
+         [height 3])
     (define confirm-row (new horizontal-block$ [parent this]))
 
-    (new label$ [parent mod-row]
+    (new label$ [parent label-col]
          [text "Module:"])
-    (new label$ [parent editor-row]
-         [text "Editor:"])
+    (new blank$ [parent label-col]
+         [height 1])
+    (new label$ [parent label-col]
+         [text "Interactive Syntax"])
     (new button$ [parent confirm-row]
          [label (new label$ [text "Cancel"])]
          [callback (λ (button event)
                      (show #f))])
-    (new button$ [parent confirm-row]
-         [label (new label$ [text "OK"])]
-         [callback (λ (b event)
-                     (set-result!
-                      (cons (send mod-name get-text)
-                            (send editor-name get-text)))
-                     (show #f))])
+    (define ok-space (new blank$ [parent confirm-row]
+                          [width 5]))
+    (define ok-button
+      (new button$ [parent confirm-row]
+           [label (new label$ [text "Insert"])]
+           [callback (λ (b event)
+                       (set-result!
+                        (cons (send mod-name get-text)
+                              (send editor-name get-text)))
+                       (show #f))]))
+      
+    (define mod-name (new field$ [parent field-col]
+                          [callback (λ (t e)
+                                      (update-width!))]))
+    (new blank$ [parent field-col]
+         [height 1])
+    (define editor-name (new field$ [parent field-col]
+                             [callback (λ (t e)
+                                         (update-width!))]))
 
-    (define mod-name (new field$ [parent mod-row]))
-    (define editor-name (new field$ [parent editor-row])))
+    (define (update-width!)
+      (define-values (mw mh) (send mod-name get-extent))
+      (define-values (ew eh) (send editor-name get-extent))
+      (define-values (ow oh) (send ok-button get-extent))
+      (define width (max mw ew))
+      (send ok-space set-width! (max 0 (+ width 32))))
+    (update-width!))
 
   (begin-for-interactive-syntax
     (provide get-module)
