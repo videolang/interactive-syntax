@@ -32,7 +32,7 @@
              show)
     (super-new)
     (new label$ [parent this]
-         [text "Select Editor"])
+         [text "Select Interactive-Syntax Extension"])
     
     (new blank$ [parent this]
          [height 3])
@@ -48,7 +48,7 @@
     (new blank$ [parent label-col]
          [height 1])
     (new label$ [parent label-col]
-         [text "Interactive Syntax"])
+         [text "Interactive Syntax:"])
     (new button$ [parent confirm-row]
          [label (new label$ [text "Cancel"])]
          [callback (λ (button event)
@@ -78,14 +78,14 @@
       (define-values (ew eh) (send editor-name get-extent))
       (define-values (ow oh) (send ok-button get-extent))
       (define width (max mw ew))
-      (send ok-space set-width! (max 0 (+ width 32))))
+      (send ok-space set-width! (max 0 (+ width 40))))
     (update-width!))
 
   (begin-for-interactive-syntax
     (provide get-module)
     (define (get-module [parent #f])
       (define f (new gui:dialog% [parent parent]
-                     [label "Editor Selector"]))
+                     [label "Interactive Syntax Selector"]))
       (define p (new picker$
                      [frame f]))
       (send p show #t)
