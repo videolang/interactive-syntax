@@ -23,4 +23,4 @@ e.g.
 1. install (as above)
 2. download the artifact2020 repository
 3. open artifact2020/rbtree/use.rkt
-4. click the **Undate Editors** button in the DrRacket toolbar
+4. click the **Update Editors** button in the DrRacket toolbar
